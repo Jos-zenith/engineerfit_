@@ -1,6 +1,7 @@
 "use client"
 
-import { mockStudentProfile } from "@/lib/mock-data"
+import { useEffect, useState } from "react"
+import { fetchWithAuth } from "@/lib/auth-fetch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -13,6 +14,26 @@ import { RiasecChart } from "./riasec-chart"
 import { RoleRecommendations } from "./role-recommendations"
 import { ScoreGauge } from "./score-gauge"
 import { motion } from "framer-motion"
+import { Button } from "@/components/ui/button"
+
+interface StudentProfile {
+  name: string
+  college: string
+  branch: string
+  year: number
+  cgpa: number
+  careerHygieneScore: number
+  cognitiveScore: number
+  behavioralScore: number
+  domainScore: number
+  roleAlignmentScore: number
+  retentionPrediction: number
+  personaVector: { subject: string; score: number; fullMark: number }[]
+  riasec: { code: string; label: string; score: number }[]
+  topStrengths: string[]
+  developmentAreas: string[]
+  recommendedRoles: { role: string; fitPercent: number; retention: number }[]
+}
 
 const fadeIn = {
   hidden: { opacity: 0, y: 20 },
@@ -23,7 +44,65 @@ const fadeIn = {
 }
 
 export function CareerFitSnapshot() {
-  const profile = mockStudentProfile
+  const [profile, setProfile] = useState<StudentProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    async function loadProfile() {
+      try {
+        const response = await fetchWithAuth("/api/student/profile")
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load profile")
+        }
+
+        if (active) {
+          setProfile(payload.profile)
+          setErrorMessage(null)
+        }
+      } catch (error) {
+        if (active) {
+          setErrorMessage(error instanceof Error ? error.message : "Unable to load profile")
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadProfile()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-obsidian relative flex items-center justify-center">
+        <div className="absolute inset-0 bg-grid" />
+        <p className="text-sm font-mono text-cyan tracking-[0.1em]">LOADING_PROFILE...</p>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-obsidian relative flex items-center justify-center">
+        <div className="absolute inset-0 bg-grid" />
+        <div className="relative text-center px-6">
+          <p className="text-xs font-mono text-destructive tracking-[0.1em]">{errorMessage || "No assessment found for this account."}</p>
+          <p className="text-xs text-muted-foreground mt-2">Complete an assessment to generate your snapshot.</p>
+          <Button className="mt-4" onClick={() => (window.location.href = "/assessment")}>Start Assessment</Button>
+        </div>
+      </div>
+    )
+  }
 
   const getScoreColor = (score: number) => {
     if (score >= 75) return "text-emerald"

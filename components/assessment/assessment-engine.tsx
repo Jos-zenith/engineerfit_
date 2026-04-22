@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useI18n } from "@/lib/i18n"
-import { assessmentQuestions, type Confidence, type QuestionCategory } from "@/lib/mock-data"
+import { type Confidence, type PublicAssessmentQuestion, type QuestionCategory } from "@/lib/assessment-bank"
+import { fetchWithAuth } from "@/lib/auth-fetch"
+import { getSupabaseClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +17,15 @@ interface Answer {
   selectedIndex: number
   confidence: Confidence
   timeSpent: number
-  correct: boolean
+}
+
+interface SessionPayload {
+  sessionId: string
+  theta: number
+  answeredCount: number
+  totalQuestions: number
+  question?: PublicAssessmentQuestion
+  completed?: boolean
 }
 
 const TOTAL_TIME = 30 * 60
@@ -29,22 +39,90 @@ const categoryConfig: Record<QuestionCategory, { icon: typeof Brain; label: stri
 export function AssessmentEngine() {
   const { language, setLanguage, t } = useI18n()
   const router = useRouter()
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [currentQuestion, setCurrentQuestion] = useState<PublicAssessmentQuestion | null>(null)
+  const [answeredCount, setAnsweredCount] = useState(0)
+  const [totalQuestions, setTotalQuestions] = useState(0)
+  const [thetaEstimate, setThetaEstimate] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [confidence, setConfidence] = useState<Confidence | null>(null)
   const [answers, setAnswers] = useState<Answer[]>([])
   const [timeRemaining, setTimeRemaining] = useState(TOTAL_TIME)
   const [questionStartTime, setQuestionStartTime] = useState(Date.now())
   const [isCompleted, setIsCompleted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [showDataPulse, setShowDataPulse] = useState(false)
 
-  const currentQuestion = assessmentQuestions[currentIndex]
-  const progress = ((currentIndex) / assessmentQuestions.length) * 100
-  const catConfig = categoryConfig[currentQuestion.category]
+  useEffect(() => {
+    let active = true
+    const supabase = getSupabaseClient()
+
+    async function startSession() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!session) {
+          if (active) {
+            setErrorMessage("Please login to start your assessment.")
+            setIsLoading(false)
+          }
+          router.push("/auth")
+          return
+        }
+
+        const response = await fetchWithAuth("/api/assessment/session/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        })
+        const payload: SessionPayload = await response.json()
+
+        if (!response.ok) {
+          throw new Error((payload as { error?: string })?.error || "Unable to start adaptive assessment")
+        }
+
+        if (active) {
+          if (payload.completed) {
+            setIsCompleted(true)
+          }
+
+          setSessionId(payload.sessionId)
+          setCurrentQuestion(payload.question ?? null)
+          setAnsweredCount(payload.answeredCount)
+          setTotalQuestions(payload.totalQuestions)
+          setThetaEstimate(payload.theta)
+          setErrorMessage(null)
+        }
+      } catch (error) {
+        if (active) {
+          setErrorMessage(error instanceof Error ? error.message : "Unable to start adaptive assessment")
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void startSession()
+
+    return () => {
+      active = false
+    }
+  }, [router])
+
+  const progress = totalQuestions ? (answeredCount / totalQuestions) * 100 : 0
+  const catConfig = categoryConfig[currentQuestion?.category ?? "cognitive"]
   const CatIcon = catConfig.icon
 
   useEffect(() => {
-    if (isCompleted) return
+    if (isCompleted || !currentQuestion) return
     const interval = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
@@ -65,12 +143,47 @@ export function AssessmentEngine() {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
   }
 
+  const submitAssessment = useCallback(async () => {
+    if (!sessionId) {
+      setErrorMessage("Adaptive assessment session missing")
+      return
+    }
+
+    setIsSubmitting(true)
+    setErrorMessage(null)
+
+    try {
+      const response = await fetchWithAuth("/api/assessment/session/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sessionId }),
+      })
+
+      const payload = await response.json()
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to submit assessment")
+      }
+
+      setIsCompleted(true)
+      if (payload?.scores?.irtTheta !== undefined) {
+        setThetaEstimate(Number(payload.scores.irtTheta))
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to submit assessment")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [sessionId])
+
   const handleAutoSubmit = useCallback(() => {
-    setIsCompleted(true)
-  }, [])
+    void submitAssessment()
+  }, [submitAssessment])
 
   const handleNext = () => {
-    if (selectedOption === null || confidence === null) return
+    if (selectedOption === null || confidence === null || !currentQuestion || !sessionId) return
 
     // Show data packet animation
     setShowDataPulse(true)
@@ -81,46 +194,78 @@ export function AssessmentEngine() {
       selectedIndex: selectedOption,
       confidence,
       timeSpent: (Date.now() - questionStartTime) / 1000,
-      correct: selectedOption === currentQuestion.correctIndex,
     }
 
     const newAnswers = [...answers, answer]
     setAnswers(newAnswers)
 
-    if (currentIndex < assessmentQuestions.length - 1) {
-      setTimeout(() => {
-        setCurrentIndex(currentIndex + 1)
+    setIsSubmitting(true)
+    setErrorMessage(null)
+
+    setTimeout(async () => {
+      try {
+        const response = await fetchWithAuth("/api/assessment/session/answer", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId,
+            questionId: currentQuestion.id,
+            selectedIndex,
+            confidence,
+            timeSpent: answer.timeSpent,
+          }),
+        })
+
+        const payload = await response.json()
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to process adaptive answer")
+        }
+
+        if (payload.completed) {
+          if (payload?.scores?.irtTheta !== undefined) {
+            setThetaEstimate(Number(payload.scores.irtTheta))
+          }
+          setAnsweredCount(totalQuestions || newAnswers.length)
+          setIsCompleted(true)
+          return
+        }
+
+        setCurrentQuestion(payload.question)
+        setAnsweredCount(payload.answeredCount)
+        setTotalQuestions(payload.totalQuestions)
+        setThetaEstimate(Number(payload.theta || 0))
         setSelectedOption(null)
         setConfidence(null)
         setQuestionStartTime(Date.now())
-      }, 400)
-    } else {
-      const cogCorrect = newAnswers.filter((a) => {
-        const q = assessmentQuestions.find((q) => q.id === a.questionId)
-        return q?.category === "cognitive" && a.correct
-      }).length
-      const behCorrect = newAnswers.filter((a) => {
-        const q = assessmentQuestions.find((q) => q.id === a.questionId)
-        return q?.category === "behavioral" && a.correct
-      }).length
-      const domCorrect = newAnswers.filter((a) => {
-        const q = assessmentQuestions.find((q) => q.id === a.questionId)
-        return q?.category === "domain" && a.correct
-      }).length
-
-      const cogScore = Math.round((cogCorrect / 5) * 100)
-      const behScore = Math.round((behCorrect / 5) * 100)
-      const domScore = Math.round((domCorrect / 10) * 100)
-      const overall = Math.round(cogScore * 0.3 + behScore * 0.3 + domScore * 0.4)
-
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(
-          "assessmentResult",
-          JSON.stringify({ cogScore, behScore, domScore, overall, answers: newAnswers })
-        )
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to process adaptive answer")
+      } finally {
+        setIsSubmitting(false)
       }
-      setTimeout(() => setIsCompleted(true), 400)
-    }
+    }, 250)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-obsidian flex items-center justify-center relative">
+        <div className="absolute inset-0 bg-grid" />
+        <p className="text-sm font-mono text-cyan tracking-[0.12em]">LOADING_QUESTIONS...</p>
+      </div>
+    )
+  }
+
+  if (!currentQuestion && !isCompleted) {
+    return (
+      <div className="min-h-screen bg-obsidian flex items-center justify-center relative">
+        <div className="absolute inset-0 bg-grid" />
+        <div className="text-center px-4">
+          <p className="text-sm font-mono text-destructive tracking-[0.08em]">{errorMessage || "No questions available."}</p>
+          <Button className="mt-4" onClick={() => router.push("/auth")}>Go To Login</Button>
+        </div>
+      </div>
+    )
   }
 
   const questionText =
@@ -146,8 +291,9 @@ export function AssessmentEngine() {
           </div>
           <h2 className="text-2xl font-bold text-foreground md:text-3xl font-mono tracking-tight">SCAN_COMPLETE</h2>
           <p className="mt-3 text-sm text-muted-foreground font-mono">
-            {answers.length}/{assessmentQuestions.length} data packets transmitted successfully.
+            {answers.length}/{Math.max(totalQuestions, answers.length)} adaptive packets transmitted successfully.
           </p>
+          <p className="mt-2 text-xs text-cyan font-mono">FINAL_ABILITY_THETA: {thetaEstimate.toFixed(2)}</p>
           <div className="mt-8">
             <Button
               size="lg"
@@ -181,10 +327,11 @@ export function AssessmentEngine() {
             </div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-foreground md:text-2xl font-mono tracking-tight">
-                {t("assessment.question")}_{String(currentIndex + 1).padStart(2, "0")}
+                {t("assessment.question")}_{String(answeredCount + 1).padStart(2, "0")}
               </h1>
-              <span className="text-xs text-muted-foreground font-mono">/{assessmentQuestions.length}</span>
+              <span className="text-xs text-muted-foreground font-mono">/{totalQuestions}</span>
             </div>
+            <p className="mt-1 text-[10px] font-mono text-cyan">theta={thetaEstimate.toFixed(2)}</p>
           </div>
           <div className="flex items-center gap-3">
             {/* System Mode Language Switch */}
@@ -227,7 +374,7 @@ export function AssessmentEngine() {
         {/* Question Card */}
         <AnimatePresence mode="wait">
           <motion.div
-            key={currentIndex}
+            key={currentQuestion.id}
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -30 }}
@@ -348,20 +495,26 @@ export function AssessmentEngine() {
                 {/* Next / Submit */}
                 <div className="mt-8 flex items-center justify-between">
                   <span className="text-[9px] font-mono text-muted-foreground/60 tracking-wider">
-                    PACKET_{String(currentIndex + 1).padStart(2, "0")}_OF_{String(assessmentQuestions.length).padStart(2, "0")}
+                    PACKET_{String(answeredCount + 1).padStart(2, "0")}_OF_{String(totalQuestions).padStart(2, "0")}
                   </span>
                   <Button
                     size="lg"
-                    disabled={selectedOption === null || confidence === null}
+                    disabled={selectedOption === null || confidence === null || isSubmitting}
                     onClick={handleNext}
                     className="h-11 gap-2 bg-cyan text-cyan-foreground hover:bg-cyan/90 px-6 min-w-[180px] glow-cyan-strong font-mono tracking-[0.1em] text-xs disabled:opacity-30 disabled:shadow-none"
                   >
-                    {currentIndex === assessmentQuestions.length - 1
+                    {answeredCount === totalQuestions - 1
                       ? t("assessment.submit")
                       : t("assessment.next")}
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
+                {errorMessage && (
+                  <p className="mt-3 text-[10px] font-mono text-destructive tracking-[0.08em]">{errorMessage}</p>
+                )}
+                {isSubmitting && (
+                  <p className="mt-3 text-[10px] font-mono text-cyan tracking-[0.08em]">SUBMITTING_RESULTS...</p>
+                )}
               </CardContent>
             </Card>
           </motion.div>

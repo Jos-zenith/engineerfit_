@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from "react"
-import { mockCandidates, mockJobPosting, type Candidate } from "@/lib/mock-data"
+import { useEffect, useState, type FormEvent } from "react"
+import { fetchWithAuth } from "@/lib/auth-fetch"
+import { type Candidate } from "@/lib/mock-data"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
 import {
@@ -16,18 +18,60 @@ import { CandidateMatchCard } from "./candidate-match-card"
 import { MatchBreakdownTooltip } from "./match-breakdown-tooltip"
 import { motion, AnimatePresence } from "framer-motion"
 
+interface RecruiterJob {
+  title: string
+  company: string
+  location: string
+  type: string
+  salary: string
+  jobVector: number[]
+  requirements: {
+    cognitive: Record<string, number>
+    behavioral: Record<string, number>
+    domain: Record<string, number>
+  }
+  minFitScore: number
+  minCareerHygieneScore: number
+}
+
+interface JobFormState {
+  title: string
+  company: string
+  location: string
+  employmentType: string
+  salaryRange: string
+  minFitScore: string
+  minCareerHygieneScore: string
+  jobVector: string
+  logicalReasoning: string
+  problemSolving: string
+  analyticalThinking: string
+  conscientiousness: string
+  grit: string
+  teamwork: string
+  dataStructures: string
+  webDevelopment: string
+  databases: string
+}
+
+type RecruiterCandidate = Candidate & { studentVector: number[] }
+
 /* Vector Overlap Visualization - shows Job Vector vs Student Vector overlapping */
-function VectorOverlapChart({ candidate }: { candidate: Candidate }) {
-  const data = [
-    { subject: "Logical", student: candidate.cognitiveFit, job: 70 },
-    { subject: "Problem Solving", student: Math.round(candidate.cognitiveFit * 0.9), job: 65 },
-    { subject: "Conscientiousness", student: candidate.behavioralFit, job: 65 },
-    { subject: "Grit", student: Math.round(candidate.behavioralFit * 1.05), job: 70 },
-    { subject: "Teamwork", student: Math.round(candidate.behavioralFit * 0.85), job: 60 },
-    { subject: "DS & Algo", student: candidate.domainFit, job: 75 },
-    { subject: "Web Dev", student: Math.round(candidate.domainFit * 0.9), job: 70 },
-    { subject: "Databases", student: Math.round(candidate.domainFit * 0.85), job: 65 },
+function VectorOverlapChart({ candidate, jobVector }: { candidate: RecruiterCandidate; jobVector: number[] }) {
+  const labels = [
+    "Cognitive",
+    "Behavioral",
+    "Domain",
+    "Career Hygiene",
+    "Retention",
+    "Role Alignment",
   ]
+
+  const data = labels.map((label, index) => ({
+    subject: label,
+    student: candidate.studentVector[index] ?? 0,
+    job: jobVector[index] ?? 0,
+  }))
 
   return (
     <div className="h-[220px] w-full">
@@ -52,10 +96,194 @@ function VectorOverlapChart({ candidate }: { candidate: Candidate }) {
 export function RecruiterDashboard() {
   const [minFit, setMinFit] = useState([70])
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
-  const job = mockJobPosting
+  const [selectedCandidate, setSelectedCandidate] = useState<RecruiterCandidate | null>(null)
+  const [job, setJob] = useState<RecruiterJob | null>(null)
+  const [candidates, setCandidates] = useState<RecruiterCandidate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [creatingJob, setCreatingJob] = useState(false)
+  const [createMessage, setCreateMessage] = useState<string | null>(null)
+  const [jobForm, setJobForm] = useState<JobFormState>({
+    title: "Junior Software Developer",
+    company: "TechCorp Solutions",
+    location: "Chennai, Tamil Nadu",
+    employmentType: "Full-Time, On-site",
+    salaryRange: "4.5 - 6.0 LPA",
+    minFitScore: "70",
+    minCareerHygieneScore: "60",
+    jobVector: "70,65,60,65,70,60",
+    logicalReasoning: "70",
+    problemSolving: "65",
+    analyticalThinking: "60",
+    conscientiousness: "65",
+    grit: "70",
+    teamwork: "60",
+    dataStructures: "75",
+    webDevelopment: "70",
+    databases: "65",
+  })
 
-  const filtered = mockCandidates
+  useEffect(() => {
+    let active = true
+
+    async function loadDashboard() {
+      try {
+        const response = await fetchWithAuth(`/api/recruiter/dashboard?minFit=${minFit[0]}`)
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load recruiter dashboard")
+        }
+
+        if (active) {
+          setJob(payload.job)
+          setCandidates(payload.candidates ?? [])
+          setSelectedCandidate((current) => {
+            if (!current) return payload.candidates?.[0] ?? null
+            return payload.candidates?.find((candidate: RecruiterCandidate) => candidate.id === current.id) ?? payload.candidates?.[0] ?? null
+          })
+          setErrorMessage(null)
+        }
+      } catch (error) {
+        if (active) {
+          setErrorMessage(error instanceof Error ? error.message : "Unable to load recruiter dashboard")
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadDashboard()
+
+    return () => {
+      active = false
+    }
+  }, [minFit])
+
+  async function handleCreateJob(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setCreatingJob(true)
+    setCreateMessage(null)
+    setErrorMessage(null)
+
+    try {
+      const response = await fetchWithAuth("/api/recruiter/dashboard", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: jobForm.title,
+          company: jobForm.company,
+          location: jobForm.location,
+          employmentType: jobForm.employmentType,
+          salaryRange: jobForm.salaryRange,
+          minFitScore: Number(jobForm.minFitScore),
+          minCareerHygieneScore: Number(jobForm.minCareerHygieneScore),
+          jobVector: jobForm.jobVector.split(",").map((value) => Number(value.trim())),
+          logicalReasoning: Number(jobForm.logicalReasoning),
+          problemSolving: Number(jobForm.problemSolving),
+          analyticalThinking: Number(jobForm.analyticalThinking),
+          conscientiousness: Number(jobForm.conscientiousness),
+          grit: Number(jobForm.grit),
+          teamwork: Number(jobForm.teamwork),
+          dataStructures: Number(jobForm.dataStructures),
+          webDevelopment: Number(jobForm.webDevelopment),
+          databases: Number(jobForm.databases),
+        }),
+      })
+
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to create job posting")
+      }
+
+      setCreateMessage("Job posting created. Refreshing dashboard...")
+      setLoading(true)
+      const refresh = await fetchWithAuth(`/api/recruiter/dashboard?minFit=${minFit[0]}`)
+      const refreshed = await refresh.json()
+      if (!refresh.ok) {
+        throw new Error(refreshed?.error || "Unable to refresh dashboard")
+      }
+      setJob(refreshed.job)
+      setCandidates(refreshed.candidates ?? [])
+      setSelectedCandidate(refreshed.candidates?.[0] ?? null)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to create job posting")
+    } finally {
+      setCreatingJob(false)
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-obsidian relative flex items-center justify-center">
+        <div className="absolute inset-0 bg-grid" />
+        <p className="text-sm font-mono text-gold tracking-[0.1em]">LOADING_RECRUITER_VIEW...</p>
+      </div>
+    )
+  }
+
+  if (!job) {
+    return (
+      <div className="min-h-screen bg-obsidian relative">
+        <div className="absolute inset-0 bg-grid" />
+        <div className="relative mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-12">
+          <Card className="glass mb-6">
+            <CardHeader>
+              <CardTitle className="font-mono tracking-[0.12em] text-sm uppercase">Create Job Posting</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreateJob}>
+                <Field label="Title" value={jobForm.title} onChange={(value) => setJobForm({ ...jobForm, title: value })} />
+                <Field label="Company" value={jobForm.company} onChange={(value) => setJobForm({ ...jobForm, company: value })} />
+                <Field label="Location" value={jobForm.location} onChange={(value) => setJobForm({ ...jobForm, location: value })} />
+                <Field label="Employment Type" value={jobForm.employmentType} onChange={(value) => setJobForm({ ...jobForm, employmentType: value })} />
+                <Field label="Salary Range" value={jobForm.salaryRange} onChange={(value) => setJobForm({ ...jobForm, salaryRange: value })} />
+                <Field label="Min Fit Score" value={jobForm.minFitScore} onChange={(value) => setJobForm({ ...jobForm, minFitScore: value })} />
+                <Field label="Min Career Hygiene" value={jobForm.minCareerHygieneScore} onChange={(value) => setJobForm({ ...jobForm, minCareerHygieneScore: value })} />
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-[10px] font-mono tracking-[0.15em] uppercase text-muted-foreground">Job Vector (6 comma-separated numbers)</label>
+                  <Input value={jobForm.jobVector} onChange={(e) => setJobForm({ ...jobForm, jobVector: e.target.value })} />
+                </div>
+                <div className="md:col-span-2 grid gap-4 md:grid-cols-3">
+                  <Field label="Logical Reasoning" value={jobForm.logicalReasoning} onChange={(value) => setJobForm({ ...jobForm, logicalReasoning: value })} />
+                  <Field label="Problem Solving" value={jobForm.problemSolving} onChange={(value) => setJobForm({ ...jobForm, problemSolving: value })} />
+                  <Field label="Analytical Thinking" value={jobForm.analyticalThinking} onChange={(value) => setJobForm({ ...jobForm, analyticalThinking: value })} />
+                  <Field label="Conscientiousness" value={jobForm.conscientiousness} onChange={(value) => setJobForm({ ...jobForm, conscientiousness: value })} />
+                  <Field label="Grit" value={jobForm.grit} onChange={(value) => setJobForm({ ...jobForm, grit: value })} />
+                  <Field label="Teamwork" value={jobForm.teamwork} onChange={(value) => setJobForm({ ...jobForm, teamwork: value })} />
+                  <Field label="Data Structures" value={jobForm.dataStructures} onChange={(value) => setJobForm({ ...jobForm, dataStructures: value })} />
+                  <Field label="Web Development" value={jobForm.webDevelopment} onChange={(value) => setJobForm({ ...jobForm, webDevelopment: value })} />
+                  <Field label="Databases" value={jobForm.databases} onChange={(value) => setJobForm({ ...jobForm, databases: value })} />
+                </div>
+                <div className="md:col-span-2 flex items-center justify-between gap-3 pt-2">
+                  <div>
+                    {errorMessage && <p className="text-xs font-mono text-destructive">{errorMessage}</p>}
+                    {createMessage && <p className="text-xs font-mono text-emerald">{createMessage}</p>}
+                  </div>
+                  <Button type="submit" className="bg-cyan text-cyan-foreground hover:bg-cyan/90 font-mono tracking-[0.1em] text-xs" disabled={creatingJob}>
+                    {creatingJob ? "Creating..." : "Create Job"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="glass">
+            <CardContent className="p-6 text-center">
+              <p className="text-xs font-mono text-muted-foreground">No recruiter job posting is configured yet. Create one above to start cosine matching.</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  const filtered = candidates
     .filter((c) => c.overallFit >= minFit[0])
     .sort((a, b) => b.overallFit - a.overallFit)
 
@@ -221,7 +449,7 @@ export function RecruiterDashboard() {
                       {/* Vector Overlap Chart */}
                       <div className="rounded-xl border border-white/5 bg-surface/30 p-3">
                         <p className="text-[9px] font-mono text-muted-foreground tracking-[0.15em] uppercase mb-2">VECTOR_ALIGNMENT</p>
-                        <VectorOverlapChart candidate={selectedCandidate} />
+                        <VectorOverlapChart candidate={selectedCandidate} jobVector={job.jobVector} />
                       </div>
 
                       {/* Match Breakdown */}
@@ -286,6 +514,15 @@ export function RecruiterDashboard() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-[10px] font-mono tracking-[0.15em] uppercase text-muted-foreground">{label}</label>
+      <Input value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   )
 }

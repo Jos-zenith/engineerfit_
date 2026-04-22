@@ -4,12 +4,65 @@ import Link from "next/link"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Terminal, Menu, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
+import { getSupabaseClient } from "@/lib/supabase/client"
+import { fetchWithAuth } from "@/lib/auth-fetch"
+
+interface AuthState {
+  email: string | null
+  role: "student" | "recruiter" | null
+}
 
 export function LandingNav() {
   const { language, setLanguage, t } = useI18n()
   const [open, setOpen] = useState(false)
+  const [auth, setAuth] = useState<AuthState>({ email: null, role: null })
+
+  useEffect(() => {
+    let active = true
+    const supabase = getSupabaseClient()
+
+    async function hydrateAuth() {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const email = sessionData.session?.user.email ?? null
+
+      if (!email) {
+        if (active) {
+          setAuth({ email: null, role: null })
+        }
+        return
+      }
+
+      const response = await fetchWithAuth("/api/auth/profile")
+      const payload = await response.json()
+
+      if (!active) {
+        return
+      }
+
+      setAuth({
+        email,
+        role: payload?.profile?.role ?? null,
+      })
+    }
+
+    void hydrateAuth()
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      void hydrateAuth()
+    })
+
+    return () => {
+      active = false
+      listener.subscription.unsubscribe()
+    }
+  }, [])
+
+  async function handleSignOut() {
+    const supabase = getSupabaseClient()
+    await supabase.auth.signOut()
+    setAuth({ email: null, role: null })
+  }
 
   return (
     <header className="sticky top-0 z-50 glass-strong">
@@ -53,11 +106,27 @@ export function LandingNav() {
               <span className={`text-[10px] font-mono font-bold tracking-wider ${language === "ta" ? "text-cyan" : "text-muted-foreground"}`}>TA</span>
             </div>
           </button>
-          <Link href="/assessment">
-            <Button size="sm" className="bg-cyan text-cyan-foreground hover:bg-cyan/90 glow-cyan font-mono tracking-[0.1em] text-xs">
-              {t("hero.cta")}
-            </Button>
-          </Link>
+          {auth.email ? (
+            <>
+              <span className="text-[10px] font-mono text-muted-foreground tracking-[0.1em] uppercase">
+                {auth.role ?? "user"}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSignOut}
+                className="border-white/10 text-muted-foreground hover:text-foreground hover:border-cyan/30 font-mono tracking-[0.1em] text-xs"
+              >
+                Logout
+              </Button>
+            </>
+          ) : (
+            <Link href="/auth">
+              <Button size="sm" className="bg-cyan text-cyan-foreground hover:bg-cyan/90 glow-cyan font-mono tracking-[0.1em] text-xs">
+                Login
+              </Button>
+            </Link>
+          )}
         </div>
 
         <button
@@ -81,6 +150,7 @@ export function LandingNav() {
             <Link href="/assessment" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.assessment")}</Link>
             <Link href="/dashboard" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.dashboard")}</Link>
             <Link href="/recruiter" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.jobs")}</Link>
+            <Link href="/auth" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>Auth</Link>
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setLanguage(language === "en" ? "ta" : "en")}
