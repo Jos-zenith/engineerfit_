@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
+import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   Briefcase, MapPin, DollarSign, Users, Filter, ChevronDown, ChevronUp,
   Brain, Heart, Cpu, Shield, TrendingUp, Search, Download, Star, Radar,
 } from "lucide-react"
-import { ResponsiveContainer, PolarAngleAxis, PolarGrid, RadarChart, Radar as RechartsRadar } from "recharts"
+import { ResponsiveContainer, PolarAngleAxis, PolarGrid, RadarChart, Radar as RechartsRadar, Tooltip as RechartsTooltip } from "recharts"
 import { CandidateMatchCard } from "./candidate-match-card"
 import { MatchBreakdownTooltip } from "./match-breakdown-tooltip"
 import { motion, AnimatePresence } from "framer-motion"
@@ -56,6 +58,38 @@ interface JobFormState {
 
 type RecruiterCandidate = Candidate & { studentVector: number[] }
 
+interface VectorDatum {
+  subject: string
+  student: number
+  job: number
+  delta: number
+  contribution: number
+}
+
+function VectorContributionTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: VectorDatum }> }) {
+  if (!active || !payload?.length || !payload[0]?.payload) {
+    return null
+  }
+
+  const point = payload[0].payload
+
+  return (
+    <div className="rounded-lg border border-cyan/30 bg-obsidian/95 p-3 shadow-lg">
+      <p className="text-[10px] font-mono uppercase tracking-[0.14em] text-cyan">{point.subject}</p>
+      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] font-mono">
+        <span className="text-muted-foreground">Student</span>
+        <span className="text-right text-foreground">{point.student.toFixed(1)}</span>
+        <span className="text-muted-foreground">Job</span>
+        <span className="text-right text-foreground">{point.job.toFixed(1)}</span>
+        <span className="text-muted-foreground">Gap</span>
+        <span className="text-right text-foreground">{Math.abs(point.delta).toFixed(1)}</span>
+        <span className="text-muted-foreground">cos(theta) contrib</span>
+        <span className="text-right text-emerald">{point.contribution.toFixed(2)} pts</span>
+      </div>
+    </div>
+  )
+}
+
 /* Vector Overlap Visualization - shows Job Vector vs Student Vector overlapping */
 function VectorOverlapChart({ candidate, jobVector }: { candidate: RecruiterCandidate; jobVector: number[] }) {
   const labels = [
@@ -67,11 +101,24 @@ function VectorOverlapChart({ candidate, jobVector }: { candidate: RecruiterCand
     "Role Alignment",
   ]
 
-  const data = labels.map((label, index) => ({
-    subject: label,
-    student: candidate.studentVector[index] ?? 0,
-    job: jobVector[index] ?? 0,
-  }))
+  const dot = labels.reduce((sum, _, index) => sum + ((candidate.studentVector[index] ?? 0) * (jobVector[index] ?? 0)), 0)
+  const studentNorm = Math.sqrt(labels.reduce((sum, _, index) => sum + ((candidate.studentVector[index] ?? 0) ** 2), 0))
+  const jobNorm = Math.sqrt(labels.reduce((sum, _, index) => sum + ((jobVector[index] ?? 0) ** 2), 0))
+  const denom = studentNorm * jobNorm || 1
+
+  const data = labels.map((label, index) => {
+    const student = candidate.studentVector[index] ?? 0
+    const job = jobVector[index] ?? 0
+    const contribution = ((student * job) / denom) * 100
+
+    return {
+      subject: label,
+      student,
+      job,
+      delta: student - job,
+      contribution,
+    }
+  })
 
   return (
     <div className="h-[220px] w-full">
@@ -79,6 +126,7 @@ function VectorOverlapChart({ candidate, jobVector }: { candidate: RecruiterCand
         <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
           <PolarGrid stroke="rgba(255,255,255,0.05)" />
           <PolarAngleAxis dataKey="subject" tick={{ fill: "#475569", fontSize: 8, fontFamily: "var(--font-jetbrains)" }} />
+          <RechartsTooltip content={<VectorContributionTooltip />} />
           {/* Job Vector (background) */}
           <RechartsRadar name="Job Vector" dataKey="job" stroke="#A78BFA" fill="#A78BFA" fillOpacity={0.08} strokeWidth={1.5} strokeDasharray="4 4" />
           {/* Student Vector (foreground) */}
@@ -93,9 +141,110 @@ function VectorOverlapChart({ candidate, jobVector }: { candidate: RecruiterCand
   )
 }
 
+function CandidateDetailPanel({
+  selectedCandidate,
+  job,
+  className,
+}: {
+  selectedCandidate: RecruiterCandidate
+  job: RecruiterJob
+  className?: string
+}) {
+  return (
+    <Card className={`glass ${
+      selectedCandidate.overallFit >= 85 ? "border-gold/30 glow-gold" : "border-cyan/20 glow-cyan"
+    } ${className ?? ""}`}>
+      <CardHeader className="pb-1">
+        <CardTitle className="flex items-center gap-3 text-sm">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-md text-xs font-bold font-mono ${
+            selectedCandidate.overallFit >= 85
+              ? "bg-gold/10 text-gold border border-gold/30"
+              : "bg-cyan/10 text-cyan border border-cyan/20"
+          }`}>
+            {selectedCandidate.avatar}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground tracking-tight">{selectedCandidate.name}</p>
+            <p className="text-[9px] text-muted-foreground font-normal font-mono tracking-wider">
+              {selectedCandidate.college} // {selectedCandidate.branch}
+            </p>
+          </div>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className={`text-center rounded-xl border p-4 ${
+          selectedCandidate.overallFit >= 85
+            ? "border-gold/30 bg-gold/[0.03] glow-gold-strong"
+            : "border-cyan/20 bg-cyan/[0.03]"
+        }`}>
+          <p className="text-[9px] font-mono text-muted-foreground tracking-[0.15em] uppercase mb-1">COSINE_SIMILARITY</p>
+          <p className={`text-3xl font-bold font-mono tracking-wider ${
+            selectedCandidate.overallFit >= 85 ? "text-gold" : "text-cyan"
+          }`}>
+            {selectedCandidate.overallFit}%
+          </p>
+          {selectedCandidate.overallFit >= 85 && (
+            <Badge className="mt-2 bg-gold/10 text-gold border border-gold/30 text-[8px] font-mono tracking-[0.2em]">
+              ELITE MATCH
+            </Badge>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-white/5 bg-surface/30 p-3">
+          <p className="text-[9px] font-mono text-muted-foreground tracking-[0.15em] uppercase mb-2">VECTOR_ALIGNMENT</p>
+          <VectorOverlapChart candidate={selectedCandidate} jobVector={job.jobVector} />
+        </div>
+
+        <MatchBreakdownTooltip candidate={selectedCandidate} jobTitle={job.title} />
+
+        <div className="flex flex-col gap-2.5">
+          <ScoreBar icon={Brain} label="COG" score={selectedCandidate.cognitiveFit} iconClass="text-cyan" scoreClass="text-cyan" />
+          <ScoreBar icon={Heart} label="BEH" score={selectedCandidate.behavioralFit} iconClass="text-violet" scoreClass="text-violet" />
+          <ScoreBar icon={Cpu} label="DOM" score={selectedCandidate.domainFit} iconClass="text-emerald" scoreClass="text-emerald" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border border-cyan/20 bg-cyan/[0.03] p-3 text-center">
+            <TrendingUp className="h-3.5 w-3.5 text-cyan mx-auto mb-1" />
+            <p className="text-base font-bold font-mono text-foreground tracking-wider">{selectedCandidate.careerHygieneScore}</p>
+            <p className="text-[8px] text-muted-foreground font-mono tracking-[0.1em] uppercase">Career Hygiene</p>
+          </div>
+          <div className="rounded-lg border border-emerald/20 bg-emerald/[0.03] p-3 text-center">
+            <Shield className="h-3.5 w-3.5 text-emerald mx-auto mb-1" />
+            <p className="text-base font-bold font-mono text-emerald tracking-wider">{selectedCandidate.retentionPrediction}%</p>
+            <p className="text-[8px] text-muted-foreground font-mono tracking-[0.1em] uppercase">Retention</p>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[9px] font-mono text-muted-foreground mb-2 tracking-[0.15em] uppercase">Strength Vectors</p>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedCandidate.topStrengths.map((s) => (
+              <Badge key={s} variant="outline" className="text-[9px] bg-emerald/[0.03] text-emerald border-emerald/20 font-mono tracking-wider">
+                <Star className="h-2.5 w-2.5 mr-1" />{s}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2 mt-1">
+          <Button size="sm" className="flex-1 bg-cyan text-cyan-foreground hover:bg-cyan/90 glow-cyan font-mono tracking-[0.1em] text-xs">
+            Shortlist
+          </Button>
+          <Button size="sm" variant="outline" className="flex-1 border-white/10 text-muted-foreground hover:text-foreground hover:border-cyan/30 font-mono tracking-[0.1em] text-xs">
+            Full Snapshot
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function RecruiterDashboard() {
+  const isMobile = useIsMobile()
   const [minFit, setMinFit] = useState([70])
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [selectedCandidate, setSelectedCandidate] = useState<RecruiterCandidate | null>(null)
   const [job, setJob] = useState<RecruiterJob | null>(null)
   const [candidates, setCandidates] = useState<RecruiterCandidate[]>([])
@@ -103,6 +252,7 @@ export function RecruiterDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [creatingJob, setCreatingJob] = useState(false)
   const [createMessage, setCreateMessage] = useState<string | null>(null)
+  const [onboardingMessage, setOnboardingMessage] = useState<string | null>(null)
   const [jobForm, setJobForm] = useState<JobFormState>({
     title: "Junior Software Developer",
     company: "TechCorp Solutions",
@@ -138,6 +288,11 @@ export function RecruiterDashboard() {
         if (active) {
           setJob(payload.job)
           setCandidates(payload.candidates ?? [])
+          setOnboardingMessage(
+            payload?.onboarding?.sampleJobCreated
+              ? "We created a sample job posting to get you started. You can replace it anytime."
+              : null,
+          )
           setSelectedCandidate((current) => {
             if (!current) return payload.candidates?.[0] ?? null
             return payload.candidates?.find((candidate: RecruiterCandidate) => candidate.id === current.id) ?? payload.candidates?.[0] ?? null
@@ -201,6 +356,7 @@ export function RecruiterDashboard() {
       }
 
       setCreateMessage("Job posting created. Refreshing dashboard...")
+      setOnboardingMessage(null)
       setLoading(true)
       const refresh = await fetchWithAuth(`/api/recruiter/dashboard?minFit=${minFit[0]}`)
       const refreshed = await refresh.json()
@@ -287,6 +443,13 @@ export function RecruiterDashboard() {
     .filter((c) => c.overallFit >= minFit[0])
     .sort((a, b) => b.overallFit - a.overallFit)
 
+  const handleCandidateSelect = (candidate: RecruiterCandidate) => {
+    setSelectedCandidate(candidate)
+    if (isMobile) {
+      setMobileDetailOpen(true)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-obsidian relative">
       <div className="absolute inset-0 bg-grid" />
@@ -335,6 +498,14 @@ export function RecruiterDashboard() {
             </CardContent>
           </Card>
         </motion.div>
+
+        {onboardingMessage && (
+          <Card className="glass border-emerald/30 mb-5">
+            <CardContent className="p-3 md:p-4">
+              <p className="text-[11px] font-mono text-emerald tracking-[0.08em]">{onboardingMessage}</p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <div className="mb-6">
@@ -387,9 +558,19 @@ export function RecruiterDashboard() {
 
             {filtered.map((candidate, idx) => (
               <motion.div key={candidate.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04, duration: 0.3 }}>
-                <CandidateMatchCard candidate={candidate} rank={idx + 1} isSelected={selectedCandidate?.id === candidate.id} onClick={() => setSelectedCandidate(candidate)} />
+                <CandidateMatchCard candidate={candidate} rank={idx + 1} isSelected={selectedCandidate?.id === candidate.id} onClick={() => handleCandidateSelect(candidate)} />
               </motion.div>
             ))}
+
+            {isMobile && selectedCandidate && filtered.length > 0 && (
+              <Button
+                variant="outline"
+                className="mt-2 border-cyan/30 text-cyan hover:bg-cyan/10 font-mono tracking-[0.1em] text-xs"
+                onClick={() => setMobileDetailOpen(true)}
+              >
+                Open Candidate Analysis: {selectedCandidate.name}
+              </Button>
+            )}
 
             {filtered.length === 0 && (
               <Card className="glass">
@@ -402,103 +583,11 @@ export function RecruiterDashboard() {
           </div>
 
           {/* Detail Panel */}
-          <div className="lg:col-span-2">
+          <div className="hidden lg:block lg:col-span-2">
             <AnimatePresence mode="wait">
               {selectedCandidate ? (
                 <motion.div key={selectedCandidate.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
-                  <Card className={`glass sticky top-20 ${
-                    selectedCandidate.overallFit >= 85 ? "border-gold/30 glow-gold" : "border-cyan/20 glow-cyan"
-                  }`}>
-                    <CardHeader className="pb-1">
-                      <CardTitle className="flex items-center gap-3 text-sm">
-                        <div className={`flex h-10 w-10 items-center justify-center rounded-md text-xs font-bold font-mono ${
-                          selectedCandidate.overallFit >= 85
-                            ? "bg-gold/10 text-gold border border-gold/30"
-                            : "bg-cyan/10 text-cyan border border-cyan/20"
-                        }`}>
-                          {selectedCandidate.avatar}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-foreground tracking-tight">{selectedCandidate.name}</p>
-                          <p className="text-[9px] text-muted-foreground font-normal font-mono tracking-wider">
-                            {selectedCandidate.college} // {selectedCandidate.branch}
-                          </p>
-                        </div>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-4">
-                      {/* Cosine Similarity Score - Glows at 85%+ */}
-                      <div className={`text-center rounded-xl border p-4 ${
-                        selectedCandidate.overallFit >= 85
-                          ? "border-gold/30 bg-gold/[0.03] glow-gold-strong"
-                          : "border-cyan/20 bg-cyan/[0.03]"
-                      }`}>
-                        <p className="text-[9px] font-mono text-muted-foreground tracking-[0.15em] uppercase mb-1">COSINE_SIMILARITY</p>
-                        <p className={`text-3xl font-bold font-mono tracking-wider ${
-                          selectedCandidate.overallFit >= 85 ? "text-gold" : "text-cyan"
-                        }`}>
-                          {selectedCandidate.overallFit}%
-                        </p>
-                        {selectedCandidate.overallFit >= 85 && (
-                          <Badge className="mt-2 bg-gold/10 text-gold border border-gold/30 text-[8px] font-mono tracking-[0.2em]">
-                            ELITE MATCH
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Vector Overlap Chart */}
-                      <div className="rounded-xl border border-white/5 bg-surface/30 p-3">
-                        <p className="text-[9px] font-mono text-muted-foreground tracking-[0.15em] uppercase mb-2">VECTOR_ALIGNMENT</p>
-                        <VectorOverlapChart candidate={selectedCandidate} jobVector={job.jobVector} />
-                      </div>
-
-                      {/* Match Breakdown */}
-                      <MatchBreakdownTooltip candidate={selectedCandidate} jobTitle={job.title} />
-
-                      {/* Dimension Scores */}
-                      <div className="flex flex-col gap-2.5">
-                        <ScoreBar icon={Brain} label="COG" score={selectedCandidate.cognitiveFit} iconClass="text-cyan" scoreClass="text-cyan" />
-                        <ScoreBar icon={Heart} label="BEH" score={selectedCandidate.behavioralFit} iconClass="text-violet" scoreClass="text-violet" />
-                        <ScoreBar icon={Cpu} label="DOM" score={selectedCandidate.domainFit} iconClass="text-emerald" scoreClass="text-emerald" />
-                      </div>
-
-                      {/* CHS + Retention */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg border border-cyan/20 bg-cyan/[0.03] p-3 text-center">
-                          <TrendingUp className="h-3.5 w-3.5 text-cyan mx-auto mb-1" />
-                          <p className="text-base font-bold font-mono text-foreground tracking-wider">{selectedCandidate.careerHygieneScore}</p>
-                          <p className="text-[8px] text-muted-foreground font-mono tracking-[0.1em] uppercase">Career Hygiene</p>
-                        </div>
-                        <div className="rounded-lg border border-emerald/20 bg-emerald/[0.03] p-3 text-center">
-                          <Shield className="h-3.5 w-3.5 text-emerald mx-auto mb-1" />
-                          <p className="text-base font-bold font-mono text-emerald tracking-wider">{selectedCandidate.retentionPrediction}%</p>
-                          <p className="text-[8px] text-muted-foreground font-mono tracking-[0.1em] uppercase">Retention</p>
-                        </div>
-                      </div>
-
-                      {/* Top Strengths */}
-                      <div>
-                        <p className="text-[9px] font-mono text-muted-foreground mb-2 tracking-[0.15em] uppercase">Strength Vectors</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedCandidate.topStrengths.map((s) => (
-                            <Badge key={s} variant="outline" className="text-[9px] bg-emerald/[0.03] text-emerald border-emerald/20 font-mono tracking-wider">
-                              <Star className="h-2.5 w-2.5 mr-1" />{s}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex gap-2 mt-1">
-                        <Button size="sm" className="flex-1 bg-cyan text-cyan-foreground hover:bg-cyan/90 glow-cyan font-mono tracking-[0.1em] text-xs">
-                          Shortlist
-                        </Button>
-                        <Button size="sm" variant="outline" className="flex-1 border-white/10 text-muted-foreground hover:text-foreground hover:border-cyan/30 font-mono tracking-[0.1em] text-xs">
-                          Full Snapshot
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <CandidateDetailPanel selectedCandidate={selectedCandidate} job={job} className="sticky top-20" />
                 </motion.div>
               ) : (
                 <Card className="glass">
@@ -513,6 +602,30 @@ export function RecruiterDashboard() {
             </AnimatePresence>
           </div>
         </div>
+
+        <Drawer open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
+          <DrawerContent className="bg-obsidian border-white/10">
+            <DrawerHeader>
+              <DrawerTitle className="font-mono text-xs tracking-[0.15em] uppercase text-cyan">Candidate Analysis</DrawerTitle>
+            </DrawerHeader>
+            <div className="px-4 pb-2 overflow-y-auto">
+              {selectedCandidate ? (
+                <CandidateDetailPanel selectedCandidate={selectedCandidate} job={job} className="border-white/10" />
+              ) : (
+                <Card className="glass">
+                  <CardContent className="py-8 text-center text-xs font-mono text-muted-foreground">
+                    Select a candidate from the list to view analysis.
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+            <DrawerFooter>
+              <DrawerClose asChild>
+                <Button variant="outline" className="font-mono tracking-[0.1em] text-xs">Close</Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
       </div>
     </div>
   )

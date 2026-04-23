@@ -5,10 +5,10 @@ import { Cpu, Network, Target, Shield } from "lucide-react"
 import { motion } from "framer-motion"
 
 const stats = [
-  { key: "stats.students", value: "12,847", icon: Cpu, color: "text-cyan" },
-  { key: "stats.colleges", value: "45", icon: Network, color: "text-violet" },
-  { key: "stats.placement", value: "89.2%", icon: Target, color: "text-emerald" },
-  { key: "stats.retention", value: "91.7%", icon: Shield, color: "text-emerald" },
+  { key: "stats.students", value: "12,847", icon: Cpu, color: "text-cyan", qualifier: "stats.pilotGoal" },
+  { key: "stats.colleges", value: "45", icon: Network, color: "text-violet", qualifier: "stats.pilotGoal" },
+  { key: "stats.placement", value: "89.2%", icon: Target, color: "text-emerald", qualifier: "stats.targetKpi" },
+  { key: "stats.retention", value: "91.7%", icon: Shield, color: "text-emerald", qualifier: "stats.targetKpi" },
 ]
 
 export function StatsBar() {
@@ -35,9 +35,15 @@ export function StatsBar() {
               <span className="text-[10px] text-muted-foreground font-mono tracking-[0.15em] uppercase">
                 {t(stat.key)}
               </span>
+              <span className="text-[9px] text-cyan/80 font-mono tracking-[0.12em] uppercase mt-1">
+                {t(stat.qualifier)}
+              </span>
             </motion.div>
           )
         })}
+      </div>
+      <div className="mx-auto max-w-7xl px-4 pb-4 text-center">
+        <p className="text-[10px] text-muted-foreground font-mono tracking-[0.08em]">{t("stats.disclaimer")}</p>
       </div>
     </section>
   )

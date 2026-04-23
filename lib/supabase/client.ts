@@ -1,14 +1,14 @@
 "use client"
 
-import { createClient } from "@supabase/supabase-js"
+import { createBrowserClient } from "@supabase/ssr"
 import { assertSupabaseEnv, SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/env"
 
-let singletonClient: ReturnType<typeof createClient> | null = null
+let singletonClient: ReturnType<typeof createBrowserClient> | null = null
 
 export function getSupabaseClient() {
 	if (!singletonClient) {
 		assertSupabaseEnv()
-		singletonClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!)
+		singletonClient = createBrowserClient(SUPABASE_URL!, SUPABASE_ANON_KEY!)
 	}
 
 	return singletonClient

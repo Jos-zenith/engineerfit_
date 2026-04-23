@@ -32,7 +32,8 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  await supabase.auth.getUser()
+  // Refresh session to keep it valid and propagate to response cookies
+  const { data: { user } } = await supabase.auth.getUser()
 
   return response
 }

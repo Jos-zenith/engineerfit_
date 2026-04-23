@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import {
   TrendingUp, Shield, Brain, Heart, Cpu,
-  Star, AlertTriangle, Briefcase, Award, Target, Fingerprint,
+  Star, AlertTriangle, Briefcase, Award, Target, Fingerprint, Download,
 } from "lucide-react"
 import { PersonaRadarChart } from "./persona-radar-chart"
 import { RiasecChart } from "./riasec-chart"
@@ -32,6 +32,16 @@ interface StudentProfile {
   riasec: { code: string; label: string; score: number }[]
   topStrengths: string[]
   developmentAreas: string[]
+  explanation?: {
+    formula?: string
+    weightedContributions?: {
+      cognitive?: number
+      behavioral?: number
+      domain?: number
+      roleAlignment?: number
+    }
+    rationaleTags?: string[]
+  } | null
   recommendedRoles: { role: string; fitPercent: number; retention: number }[]
 }
 
@@ -46,6 +56,7 @@ const fadeIn = {
 export function CareerFitSnapshot() {
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [downloadingReport, setDownloadingReport] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
@@ -118,6 +129,33 @@ export function CareerFitSnapshot() {
 
   const badge = getScoreBadge(profile.careerHygieneScore)
 
+  async function handleDownloadReport() {
+    setDownloadingReport(true)
+    setErrorMessage(null)
+
+    try {
+      const response = await fetchWithAuth("/api/student/report")
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error || "Unable to generate PDF report")
+      }
+
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = objectUrl
+      anchor.download = "career-fit-snapshot.pdf"
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(objectUrl)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to generate PDF report")
+    } finally {
+      setDownloadingReport(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-obsidian relative">
       <div className="absolute inset-0 bg-grid" />
@@ -143,6 +181,16 @@ export function CareerFitSnapshot() {
           <Badge variant="outline" className={`self-start px-3 py-1 text-[10px] font-mono tracking-[0.15em] ${badge.className}`}>
             {badge.label}
           </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start border-cyan/30 text-cyan hover:bg-cyan/10 font-mono tracking-[0.1em] text-[10px]"
+            onClick={() => void handleDownloadReport()}
+            disabled={downloadingReport}
+          >
+            <Download className="h-3.5 w-3.5 mr-1" />
+            {downloadingReport ? "Generating..." : "Download PDF Report"}
+          </Button>
         </motion.div>
 
         {/* Bento Grid: Top row */}
@@ -279,6 +327,33 @@ export function CareerFitSnapshot() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="glass">
+            <CardHeader className="pb-1">
+              <CardTitle className="flex items-center gap-2 text-xs font-mono tracking-tight">
+                <Shield className="h-4 w-4 text-cyan" />
+                EXPLAINABILITY
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-[10px] text-muted-foreground font-mono tracking-wider">
+                {profile.explanation?.formula || "CHS = 0.30C + 0.30B + 0.25D + 0.15R"}
+              </p>
+              <div className="space-y-2">
+                <ContributionRow label="Cognitive" value={profile.explanation?.weightedContributions?.cognitive ?? profile.cognitiveScore * 0.3} />
+                <ContributionRow label="Behavioral" value={profile.explanation?.weightedContributions?.behavioral ?? profile.behavioralScore * 0.3} />
+                <ContributionRow label="Domain" value={profile.explanation?.weightedContributions?.domain ?? profile.domainScore * 0.25} />
+                <ContributionRow label="Role Alignment" value={profile.explanation?.weightedContributions?.roleAlignment ?? profile.roleAlignmentScore * 0.15} />
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(profile.explanation?.rationaleTags?.length ? profile.explanation.rationaleTags : ["calibrated-default"]).slice(0, 4).map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-[9px] font-mono tracking-[0.1em] border-cyan/30 text-cyan">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
 
         {/* Role Recommendations */}
@@ -286,6 +361,15 @@ export function CareerFitSnapshot() {
           <RoleRecommendations roles={profile.recommendedRoles} />
         </motion.div>
       </div>
+    </div>
+  )
+}
+
+function ContributionRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-cyan/15 bg-cyan/[0.03] px-2 py-1.5">
+      <span className="text-[10px] text-muted-foreground font-mono tracking-wider">{label}</span>
+      <span className="text-[10px] text-cyan font-mono tracking-[0.08em]">{value.toFixed(2)}</span>
     </div>
   )
 }

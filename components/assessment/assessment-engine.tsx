@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useI18n } from "@/lib/i18n"
-import { type Confidence, type PublicAssessmentQuestion, type QuestionCategory } from "@/lib/assessment-bank"
+import { type Confidence, type EngineeringDiscipline, type PublicAssessmentQuestion, type QuestionCategory } from "@/lib/assessment-bank"
 import { fetchWithAuth } from "@/lib/auth-fetch"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock, Brain, Heart, Cpu, ChevronRight, CheckCircle2, Terminal, Scan } from "lucide-react"
+import { Clock, Brain, Heart, Cpu, ChevronRight, CheckCircle2, Terminal, Scan, RotateCcw, Play } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 interface Answer {
@@ -24,11 +24,34 @@ interface SessionPayload {
   theta: number
   answeredCount: number
   totalQuestions: number
+  categoryTotals?: {
+    cognitive: number
+    behavioral: number
+    domain: number
+    total: number
+  }
+  elapsedSeconds?: number
+  resumable?: boolean
   question?: PublicAssessmentQuestion
   completed?: boolean
+  error?: string
+}
+
+interface ResumePromptState {
+  sessionId: string
+  answeredCount: number
+  totalQuestions: number
+  elapsedSeconds: number
 }
 
 const TOTAL_TIME = 30 * 60
+
+const disciplineOptions: Array<{ value: EngineeringDiscipline; label: string; description: string }> = [
+  { value: "cs", label: "Computer Science", description: "Algorithms, systems, databases, distributed computing" },
+  { value: "mechanical", label: "Mechanical", description: "Thermodynamics, mechanics, machine design" },
+  { value: "eee_ece", label: "EEE / ECE", description: "Circuits, electronics, signals, communication" },
+  { value: "civil", label: "Civil", description: "Structures, materials, surveying, construction" },
+]
 
 const categoryConfig: Record<QuestionCategory, { icon: typeof Brain; label: string; badgeClass: string; glowClass: string; accentClass: string }> = {
   cognitive: { icon: Brain, label: "assessment.cognitive", badgeClass: "text-cyan bg-cyan/10 border-cyan/30", glowClass: "glow-cyan", accentClass: "text-cyan" },
@@ -39,27 +62,35 @@ const categoryConfig: Record<QuestionCategory, { icon: typeof Brain; label: stri
 export function AssessmentEngine() {
   const { language, setLanguage, t } = useI18n()
   const router = useRouter()
+  const [selectedDiscipline, setSelectedDiscipline] = useState<EngineeringDiscipline | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState<PublicAssessmentQuestion | null>(null)
   const [answeredCount, setAnsweredCount] = useState(0)
   const [totalQuestions, setTotalQuestions] = useState(0)
+  const [categoryTotals, setCategoryTotals] = useState({ cognitive: 0, behavioral: 0, domain: 0, total: 0 })
   const [thetaEstimate, setThetaEstimate] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [confidence, setConfidence] = useState<Confidence | null>(null)
   const [answers, setAnswers] = useState<Answer[]>([])
   const [timeRemaining, setTimeRemaining] = useState(TOTAL_TIME)
   const [questionStartTime, setQuestionStartTime] = useState(Date.now())
+  const [resumePrompt, setResumePrompt] = useState<ResumePromptState | null>(null)
   const [isCompleted, setIsCompleted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showDataPulse, setShowDataPulse] = useState(false)
 
   useEffect(() => {
+    if (!selectedDiscipline) {
+      return
+    }
+
     let active = true
     const supabase = getSupabaseClient()
 
     async function startSession() {
+      setIsLoading(true)
       try {
         const {
           data: { session },
@@ -74,17 +105,46 @@ export function AssessmentEngine() {
           return
         }
 
+        const probeResponse = await fetchWithAuth("/api/assessment/session/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ probeOnly: true, discipline: selectedDiscipline }),
+        })
+        const probePayload: SessionPayload = await probeResponse.json()
+
+        if (!probeResponse.ok) {
+          throw new Error(probePayload.error || "Unable to check active assessment session")
+        }
+
+        if (probePayload.resumable && probePayload.answeredCount > 0) {
+          if (active) {
+            setResumePrompt({
+              sessionId: probePayload.sessionId,
+              answeredCount: probePayload.answeredCount,
+              totalQuestions: probePayload.totalQuestions,
+              elapsedSeconds: probePayload.elapsedSeconds ?? 0,
+            })
+            if (probePayload.categoryTotals) {
+              setCategoryTotals(probePayload.categoryTotals)
+            }
+            setErrorMessage(null)
+          }
+          return
+        }
+
         const response = await fetchWithAuth("/api/assessment/session/start", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ discipline: selectedDiscipline }),
         })
         const payload: SessionPayload = await response.json()
 
         if (!response.ok) {
-          throw new Error((payload as { error?: string })?.error || "Unable to start adaptive assessment")
+          throw new Error(payload?.error || "Unable to start adaptive assessment")
         }
 
         if (active) {
@@ -92,11 +152,17 @@ export function AssessmentEngine() {
             setIsCompleted(true)
           }
 
+          setResumePrompt(null)
           setSessionId(payload.sessionId)
           setCurrentQuestion(payload.question ?? null)
           setAnsweredCount(payload.answeredCount)
           setTotalQuestions(payload.totalQuestions)
+          if (payload.categoryTotals) {
+            setCategoryTotals(payload.categoryTotals)
+          }
           setThetaEstimate(payload.theta)
+          setTimeRemaining(Math.max(0, TOTAL_TIME - (payload.elapsedSeconds ?? 0)))
+          setQuestionStartTime(Date.now())
           setErrorMessage(null)
         }
       } catch (error) {
@@ -115,7 +181,7 @@ export function AssessmentEngine() {
     return () => {
       active = false
     }
-  }, [router])
+  }, [router, selectedDiscipline])
 
   const progress = totalQuestions ? (answeredCount / totalQuestions) * 100 : 0
   const catConfig = categoryConfig[currentQuestion?.category ?? "cognitive"]
@@ -142,6 +208,52 @@ export function AssessmentEngine() {
     const s = seconds % 60
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
   }
+
+  const handleResumeChoice = useCallback(async (mode: "resume" | "restart") => {
+    if (!selectedDiscipline) {
+      setErrorMessage("Select your engineering discipline before continuing.")
+      return
+    }
+
+    setIsLoading(true)
+    setErrorMessage(null)
+
+    try {
+      const response = await fetchWithAuth("/api/assessment/session/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(mode === "restart" ? { restart: true, discipline: selectedDiscipline } : { discipline: selectedDiscipline }),
+      })
+
+      const payload: SessionPayload = await response.json()
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to load assessment session")
+      }
+
+      if (payload.completed) {
+        setIsCompleted(true)
+      }
+
+      setResumePrompt(null)
+      setSessionId(payload.sessionId)
+      setCurrentQuestion(payload.question ?? null)
+      setAnsweredCount(payload.answeredCount)
+      setTotalQuestions(payload.totalQuestions)
+      if (payload.categoryTotals) {
+        setCategoryTotals(payload.categoryTotals)
+      }
+      setThetaEstimate(payload.theta)
+      setTimeRemaining(Math.max(0, TOTAL_TIME - (payload.elapsedSeconds ?? 0)))
+      setQuestionStartTime(Date.now())
+      setErrorMessage(null)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load assessment session")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [selectedDiscipline])
 
   const submitAssessment = useCallback(async () => {
     if (!sessionId) {
@@ -212,8 +324,9 @@ export function AssessmentEngine() {
           body: JSON.stringify({
             sessionId,
             questionId: currentQuestion.id,
-            selectedIndex,
+            selectedIndex: selectedOption,
             confidence,
+            discipline: selectedDiscipline,
             timeSpent: answer.timeSpent,
           }),
         })
@@ -235,6 +348,9 @@ export function AssessmentEngine() {
         setCurrentQuestion(payload.question)
         setAnsweredCount(payload.answeredCount)
         setTotalQuestions(payload.totalQuestions)
+        if (payload.categoryTotals) {
+          setCategoryTotals(payload.categoryTotals)
+        }
         setThetaEstimate(Number(payload.theta || 0))
         setSelectedOption(null)
         setConfidence(null)
@@ -247,6 +363,38 @@ export function AssessmentEngine() {
     }, 250)
   }
 
+  if (!selectedDiscipline) {
+    return (
+      <div className="min-h-screen bg-obsidian flex items-center justify-center relative">
+        <div className="absolute inset-0 bg-grid" />
+        <Card className="relative glass max-w-2xl w-full mx-4 glow-cyan">
+          <CardContent className="p-6 md:p-8">
+            <p className="text-[10px] font-mono text-cyan tracking-[0.2em] uppercase">Initialize Assessment Profile</p>
+            <h2 className="mt-2 text-lg font-semibold text-foreground font-mono tracking-tight">Select Your Engineering Discipline</h2>
+            <p className="mt-2 text-xs text-muted-foreground font-mono">Domain-adaptive questions will align with your selected branch.</p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {disciplineOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="rounded-xl border border-white/10 bg-surface/40 p-4 text-left transition-all hover:border-cyan/40 hover:bg-cyan/5"
+                  onClick={() => {
+                    setSelectedDiscipline(option.value)
+                    setErrorMessage(null)
+                  }}
+                >
+                  <p className="text-xs font-mono tracking-[0.12em] uppercase text-cyan">{option.label}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{option.description}</p>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-obsidian flex items-center justify-center relative">
@@ -257,6 +405,38 @@ export function AssessmentEngine() {
   }
 
   if (!currentQuestion && !isCompleted) {
+    if (resumePrompt) {
+      return (
+        <div className="min-h-screen bg-obsidian flex items-center justify-center relative">
+          <div className="absolute inset-0 bg-grid" />
+          <Card className="relative glass max-w-lg w-full mx-4 glow-cyan">
+            <CardContent className="p-6 md:p-8">
+              <p className="text-[10px] font-mono text-cyan tracking-[0.18em] uppercase">Assessment Resume Detected</p>
+              <h2 className="mt-2 text-lg font-semibold text-foreground font-mono tracking-tight">
+                Resume from Q{resumePrompt.answeredCount + 1}
+              </h2>
+              <p className="mt-2 text-xs text-muted-foreground font-mono">
+                {resumePrompt.answeredCount}/{resumePrompt.totalQuestions} answered. Time elapsed: {formatTime(resumePrompt.elapsedSeconds)}.
+              </p>
+              <p className="mt-1 text-[10px] text-muted-foreground font-mono tracking-[0.08em]">Session auto-expires after 48 hours.</p>
+
+              <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                <Button className="flex-1 bg-cyan text-cyan-foreground hover:bg-cyan/90 font-mono tracking-[0.1em] text-xs" onClick={() => void handleResumeChoice("resume")}>
+                  <Play className="h-3.5 w-3.5 mr-1" />
+                  Resume Assessment
+                </Button>
+                <Button variant="outline" className="flex-1 border-white/10 font-mono tracking-[0.1em] text-xs" onClick={() => void handleResumeChoice("restart")}>
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  Restart Fresh
+                </Button>
+              </div>
+              {errorMessage && <p className="mt-3 text-[10px] font-mono text-destructive tracking-[0.08em]">{errorMessage}</p>}
+            </CardContent>
+          </Card>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen bg-obsidian flex items-center justify-center relative">
         <div className="absolute inset-0 bg-grid" />
@@ -267,14 +447,6 @@ export function AssessmentEngine() {
       </div>
     )
   }
-
-  const questionText =
-    currentQuestion.category === "domain"
-      ? currentQuestion.text.en
-      : currentQuestion.text[language]
-
-  const getOptionText = (opt: { en: string; ta: string }) =>
-    currentQuestion.category === "domain" ? opt.en : opt[language]
 
   if (isCompleted) {
     return (
@@ -308,6 +480,18 @@ export function AssessmentEngine() {
       </div>
     )
   }
+
+  if (!currentQuestion) {
+    return null
+  }
+
+  const questionText =
+    currentQuestion.category === "domain"
+      ? currentQuestion.text.en
+      : currentQuestion.text[language]
+
+  const getOptionText = (opt: { en: string; ta: string }) =>
+    currentQuestion.category === "domain" ? opt.en : opt[language]
 
   return (
     <div className="min-h-screen bg-obsidian relative">
@@ -365,9 +549,9 @@ export function AssessmentEngine() {
             />
           </div>
           <div className="mt-2 flex justify-between text-[9px] text-muted-foreground font-mono tracking-[0.15em] uppercase">
-            <span className="text-cyan/60">Cognitive [5]</span>
-            <span className="text-violet/60">Behavioral [5]</span>
-            <span className="text-emerald/60">Domain [10]</span>
+            <span className="text-cyan/60">Cognitive [{categoryTotals.cognitive}]</span>
+            <span className="text-violet/60">Behavioral [{categoryTotals.behavioral}]</span>
+            <span className="text-emerald/60">Domain [{categoryTotals.domain}]</span>
           </div>
         </div>
 

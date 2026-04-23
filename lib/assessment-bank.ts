@@ -2,11 +2,22 @@ export type QuestionCategory = "cognitive" | "behavioral" | "domain"
 export type Difficulty = "easy" | "medium" | "hard"
 export type Confidence = "low" | "medium" | "high"
 
+export type EngineeringDiscipline = "cs" | "mechanical" | "eee_ece" | "civil"
+export type CognitiveDimension = "logical" | "quantitative" | "verbal" | "spatial" | "analytical"
+
+export interface Irt3plParameters {
+  a: number
+  b: number
+  c: number
+}
+
 export interface InternalAssessmentQuestion {
   id: number
   category: QuestionCategory
   difficulty: Difficulty
-  irt?: { a: number; b: number }
+  irt?: Irt3plParameters
+  discipline?: EngineeringDiscipline
+  cognitiveDimension?: CognitiveDimension
   text: { en: string; ta: string }
   options: { en: string; ta: string }[]
   correctIndex: number
@@ -16,295 +27,442 @@ export interface PublicAssessmentQuestion {
   id: number
   category: QuestionCategory
   difficulty: Difficulty
+  discipline?: EngineeringDiscipline
+  cognitiveDimension?: CognitiveDimension
   text: { en: string; ta: string }
   options: { en: string; ta: string }[]
+}
+
+function localize(en: string, ta = en) {
+  return { en, ta }
+}
+
+function params(a: number, b: number, c: number): Irt3plParameters {
+  return { a, b, c }
 }
 
 export const assessmentQuestionBank: InternalAssessmentQuestion[] = [
   {
     id: 1,
     category: "cognitive",
+    cognitiveDimension: "logical",
     difficulty: "easy",
-    text: {
-      en: "If all roses are flowers and some flowers fade quickly, which statement is true?",
-      ta: "அனைத்து ரோஜாக்களும் பூக்கள் என்றால், சில பூக்கள் விரைவில் வாடினால், எந்த கூற்று உண்மை?",
-    },
+    irt: params(0.95, -1.05, 0.22),
+    text: localize("All turbines are machines. Some machines are automated. Which statement must be true?"),
     options: [
-      { en: "All roses fade quickly", ta: "அனைத்து ரோஜாக்களும் விரைவில் வாடும்" },
-      { en: "Some roses may fade quickly", ta: "சில ரோஜாக்கள் விரைவில் வாடலாம்" },
-      { en: "No roses fade quickly", ta: "ரோஜாக்கள் எதுவும் விரைவில் வாடாது" },
-      { en: "All flowers are roses", ta: "அனைத்து பூக்களும் ரோஜாக்கள்" },
+      localize("All turbines are automated"),
+      localize("Some turbines may be automated"),
+      localize("No turbines are automated"),
+      localize("All machines are turbines"),
     ],
     correctIndex: 1,
   },
   {
     id: 2,
     category: "cognitive",
-    difficulty: "medium",
-    text: {
-      en: "A train travels 60 km in 45 minutes. What is its speed in km/h?",
-      ta: "ஒரு ரயில் 45 நிமிடங்களில் 60 கி.மீ பயணிக்கிறது. அதன் வேகம் கி.மீ/மணி என்ன?",
-    },
+    cognitiveDimension: "logical",
+    difficulty: "hard",
+    irt: params(1.42, 1.15, 0.16),
+    text: localize("If statement P implies Q, and Q is false, what can be concluded?"),
     options: [
-      { en: "60 km/h", ta: "60 கி.மீ/மணி" },
-      { en: "75 km/h", ta: "75 கி.மீ/மணி" },
-      { en: "80 km/h", ta: "80 கி.மீ/மணி" },
-      { en: "90 km/h", ta: "90 கி.மீ/மணி" },
-    ],
-    correctIndex: 2,
-  },
-  {
-    id: 3,
-    category: "cognitive",
-    difficulty: "medium",
-    text: { en: "Which number completes the pattern: 2, 6, 18, 54, ?", ta: "எந்த எண் இந்த வடிவத்தை நிறைவு செய்கிறது: 2, 6, 18, 54, ?" },
-    options: [
-      { en: "108", ta: "108" },
-      { en: "162", ta: "162" },
-      { en: "148", ta: "148" },
-      { en: "180", ta: "180" },
+      localize("P is true"),
+      localize("P is false"),
+      localize("Q is true"),
+      localize("No conclusion is possible"),
     ],
     correctIndex: 1,
   },
   {
+    id: 3,
+    category: "cognitive",
+    cognitiveDimension: "quantitative",
+    difficulty: "medium",
+    irt: params(1.16, -0.1, 0.2),
+    text: localize("A pump fills 240 liters in 12 minutes. At the same rate, how much is filled in 35 minutes?"),
+    options: [
+      localize("560 liters"),
+      localize("620 liters"),
+      localize("700 liters"),
+      localize("720 liters"),
+    ],
+    correctIndex: 2,
+  },
+  {
     id: 4,
     category: "cognitive",
+    cognitiveDimension: "quantitative",
     difficulty: "hard",
-    text: {
-      en: "In a group of 100 people, 70 like tea, 65 like coffee, and 85 like milk. What is the minimum number who like all three?",
-      ta: "100 பேர் குழுவில், 70 பேர் தேநீர், 65 பேர் காபி, 85 பேர் பால் விரும்புகிறார்கள். மூன்றையும் விரும்புபவர்களின் குறைந்தபட்ச எண்ணிக்கை என்ன?",
-    },
+    irt: params(1.38, 0.95, 0.17),
+    text: localize("An alloy contains copper and zinc in ratio 5:3. If 16 kg zinc is added, ratio becomes 5:4. Original alloy mass is:"),
     options: [
-      { en: "15", ta: "15" },
-      { en: "20", ta: "20" },
-      { en: "25", ta: "25" },
-      { en: "30", ta: "30" },
+      localize("48 kg"),
+      localize("64 kg"),
+      localize("80 kg"),
+      localize("96 kg"),
     ],
     correctIndex: 1,
   },
   {
     id: 5,
     category: "cognitive",
-    difficulty: "hard",
-    text: {
-      en: "A mirror reflects light at 45 degrees. If a beam enters at 30 degrees to the mirror surface, what is the angle of reflection?",
-      ta: "ஒரு கண்ணாடி ஒளியை 45 பாகைகளில் பிரதிபலிக்கிறது. ஒரு கற்றை 30 பாகைகளில் நுழைந்தால், பிரதிபலிப்பு கோணம் என்ன?",
-    },
+    cognitiveDimension: "verbal",
+    difficulty: "easy",
+    irt: params(0.92, -0.85, 0.23),
+    text: localize("Choose the option closest in meaning to 'mitigate'."),
     options: [
-      { en: "30 degrees", ta: "30 பாகை" },
-      { en: "45 degrees", ta: "45 பாகை" },
-      { en: "60 degrees", ta: "60 பாகை" },
-      { en: "90 degrees", ta: "90 பாகை" },
+      localize("Worsen"),
+      localize("Delay"),
+      localize("Reduce"),
+      localize("Ignore"),
     ],
     correctIndex: 2,
   },
   {
     id: 6,
-    category: "behavioral",
-    difficulty: "easy",
-    text: {
-      en: "When assigned a challenging project with a tight deadline, you typically:",
-      ta: "இறுக்கமான காலக்கெடுவுடன் சவாலான திட்டம் ஒதுக்கப்படும்போது, நீங்கள் பொதுவாக:",
-    },
+    category: "cognitive",
+    cognitiveDimension: "verbal",
+    difficulty: "medium",
+    irt: params(1.08, 0.15, 0.21),
+    text: localize("Pick the sentence with the most precise technical communication."),
     options: [
-      { en: "Break it into smaller tasks and create a timeline", ta: "சிறிய பணிகளாகப் பிரித்து கால அட்டவணை உருவாக்குவேன்" },
-      { en: "Start immediately on the hardest part", ta: "உடனடியாக கடினமான பகுதியில் தொடங்குவேன்" },
-      { en: "Seek help from colleagues right away", ta: "உடனே சகாக்களிடம் உதவி கேட்பேன்" },
-      { en: "Wait for more clarity before starting", ta: "தொடங்குவதற்கு முன் மேலும் தெளிவுக்காக காத்திருப்பேன்" },
+      localize("The system broke due to many reasons."),
+      localize("Latency rose 40% after cache invalidation during peak load."),
+      localize("The output was not so good."),
+      localize("Something happened in deployment."),
     ],
-    correctIndex: 0,
+    correctIndex: 1,
   },
   {
     id: 7,
-    category: "behavioral",
+    category: "cognitive",
+    cognitiveDimension: "spatial",
     difficulty: "medium",
-    text: {
-      en: "A team member consistently misses deadlines. How do you handle this?",
-      ta: "ஒரு குழு உறுப்பினர் தொடர்ந்து காலக்கெடுவைத் தவறவிடுகிறார். இதை எவ்வாறு கையாள்வீர்கள்?",
-    },
+    irt: params(1.18, 0.2, 0.19),
+    text: localize("A cube is painted on all sides and cut into 27 equal cubes. How many small cubes have exactly two painted faces?"),
     options: [
-      { en: "Have a private conversation to understand their challenges", ta: "அவர்களின் சவால்களைப் புரிந்துகொள்ள தனிப்பட்ட உரையாடல் நடத்துவேன்" },
-      { en: "Report them to management immediately", ta: "உடனடியாக நிர்வாகத்திடம் புகாரளிப்பேன்" },
-      { en: "Do their work yourself to meet deadlines", ta: "காலக்கெடுவை நிறைவேற்ற அவர்கள் வேலையை நானே செய்வேன்" },
-      { en: "Ignore the issue and focus on your own work", ta: "பிரச்சனையை புறக்கணித்து என் வேலையில் கவனம் செலுத்துவேன்" },
+      localize("8"),
+      localize("12"),
+      localize("6"),
+      localize("18"),
     ],
-    correctIndex: 0,
+    correctIndex: 1,
   },
   {
     id: 8,
-    category: "behavioral",
-    difficulty: "medium",
-    text: {
-      en: "You receive critical feedback on a completed project. Your first reaction is to:",
-      ta: "நிறைவுற்ற திட்டத்தில் விமர்சன கருத்து கிடைக்கிறது. உங்கள் முதல் எதிர்வினை:",
-    },
+    category: "cognitive",
+    cognitiveDimension: "spatial",
+    difficulty: "hard",
+    irt: params(1.44, 1.05, 0.15),
+    text: localize("A gear rotates clockwise. The next meshed gear rotates in which direction?"),
     options: [
-      { en: "Defend your approach and explain your reasoning", ta: "உங்கள் அணுகுமுறையை பாதுகாத்து காரணங்களை விளக்குவேன்" },
-      { en: "Listen carefully and identify actionable improvements", ta: "கவனமாகக் கேட்டு செயல்படக்கூடிய மேம்பாடுகளைக் கண்டறிவேன்" },
-      { en: "Feel discouraged and question your abilities", ta: "ஊக்கமிழந்து என் திறன்களை கேள்வி எழுப்புவேன்" },
-      { en: "Dismiss the feedback as unfair", ta: "கருத்தை நியாயமற்றது என்று நிராகரிப்பேன்" },
+      localize("Clockwise"),
+      localize("Counterclockwise"),
+      localize("No rotation"),
+      localize("Alternates every second"),
     ],
     correctIndex: 1,
   },
   {
     id: 9,
-    category: "behavioral",
-    difficulty: "easy",
-    text: {
-      en: "When learning a new technology, your preferred approach is:",
-      ta: "புதிய தொழில்நுட்பத்தைக் கற்கும்போது, உங்கள் விருப்பமான அணுகுமுறை:",
-    },
+    category: "cognitive",
+    cognitiveDimension: "analytical",
+    difficulty: "medium",
+    irt: params(1.2, 0.05, 0.2),
+    text: localize("Defect rates across 4 weeks are 5%, 4%, 6%, 3%. Which week should be investigated first if production volume was equal?"),
     options: [
-      { en: "Watch tutorials and follow step-by-step guides", ta: "டுடோரியல்களைப் பார்த்து படிப்படியான வழிகாட்டிகளைப் பின்பற்றுவேன்" },
-      { en: "Build a small project to learn by doing", ta: "செய்து கற்க ஒரு சிறிய திட்டத்தை உருவாக்குவேன்" },
-      { en: "Read official documentation thoroughly first", ta: "முதலில் அதிகாரப்பூர்வ ஆவணங்களை முழுமையாக படிப்பேன்" },
-      { en: "Ask experienced colleagues for guidance", ta: "அனுபவமுள்ள சகாக்களிடம் வழிகாட்டுதல் கேட்பேன்" },
+      localize("Week 1"),
+      localize("Week 2"),
+      localize("Week 3"),
+      localize("Week 4"),
     ],
-    correctIndex: 1,
+    correctIndex: 2,
   },
   {
     id: 10,
-    category: "behavioral",
+    category: "cognitive",
+    cognitiveDimension: "analytical",
     difficulty: "hard",
-    text: {
-      en: "You discover an ethical concern in your company's product. What do you do?",
-      ta: "உங்கள் நிறுவனத்தின் தயாரிப்பில் நெறிமுறை கவலையைக் கண்டறிகிறீர்கள். என்ன செய்வீர்கள்?",
-    },
+    irt: params(1.5, 1.25, 0.14),
+    text: localize("A process has throughput 100 units/hr with 2% rework. After optimization, throughput is 110 units/hr with 3% rework. Net good output change is:"),
     options: [
-      { en: "Report it through proper channels with documented evidence", ta: "ஆவணப்படுத்தப்பட்ட சான்றுகளுடன் சரியான வழிகளில் புகாரளிப்பேன்" },
-      { en: "Post about it on social media", ta: "சமூக ஊடகங்களில் பதிவிடுவேன்" },
-      { en: "Ignore it as it's not your responsibility", ta: "உங்கள் பொறுப்பு அல்ல என்று புறக்கணிப்பேன்" },
-      { en: "Quietly fix it yourself without telling anyone", ta: "யாருக்கும் சொல்லாமல் நானே அமைதியாக சரி செய்வேன்" },
+      localize("+6.8%"),
+      localize("+7.6%"),
+      localize("+8.2%"),
+      localize("+9.0%"),
     ],
     correctIndex: 0,
   },
+
   {
     id: 11,
-    category: "domain",
+    category: "behavioral",
     difficulty: "easy",
-    text: { en: "What is the time complexity of binary search on a sorted array?", ta: "What is the time complexity of binary search on a sorted array?" },
+    irt: params(0.88, -0.9, 0.25),
+    text: localize("SJT: Your teammate misses two standups in a sprint. What do you do first?"),
     options: [
-      { en: "O(n)", ta: "O(n)" },
-      { en: "O(log n)", ta: "O(log n)" },
-      { en: "O(n log n)", ta: "O(n log n)" },
-      { en: "O(1)", ta: "O(1)" },
+      localize("Escalate to manager immediately"),
+      localize("Privately check blockers and align support"),
+      localize("Ignore and continue your tasks"),
+      localize("Publicly criticize in chat"),
     ],
     correctIndex: 1,
   },
   {
     id: 12,
-    category: "domain",
-    difficulty: "easy",
-    text: { en: "Which data structure uses LIFO (Last In, First Out) principle?", ta: "Which data structure uses LIFO (Last In, First Out) principle?" },
+    category: "behavioral",
+    difficulty: "medium",
+    irt: params(1.02, -0.05, 0.22),
+    text: localize("SJT: You receive severe feedback on your design doc. Best response?"),
     options: [
-      { en: "Queue", ta: "Queue" },
-      { en: "Stack", ta: "Stack" },
-      { en: "Array", ta: "Array" },
-      { en: "Linked List", ta: "Linked List" },
+      localize("Defend each decision without listening"),
+      localize("Thank reviewer, clarify concerns, revise with evidence"),
+      localize("Withdraw from the project"),
+      localize("Wait and hope issue disappears"),
     ],
     correctIndex: 1,
   },
   {
     id: 13,
-    category: "domain",
+    category: "behavioral",
     difficulty: "medium",
-    text: { en: "What does SQL's JOIN operation do?", ta: "What does SQL's JOIN operation do?" },
+    irt: params(1.05, 0.1, 0.21),
+    text: localize("SJT: Production bug discovered at 11 PM before release. Your action?"),
     options: [
-      { en: "Combines rows from two or more tables based on a related column", ta: "Combines rows from two or more tables based on a related column" },
-      { en: "Deletes duplicate rows from a table", ta: "Deletes duplicate rows from a table" },
-      { en: "Creates a new table from existing data", ta: "Creates a new table from existing data" },
-      { en: "Sorts data in ascending order", ta: "Sorts data in ascending order" },
+      localize("Ship anyway; fix next week"),
+      localize("Assess severity, notify stakeholders, execute rollback/hotfix plan"),
+      localize("Turn off alerts"),
+      localize("Assign blame first"),
     ],
-    correctIndex: 0,
+    correctIndex: 1,
   },
   {
     id: 14,
-    category: "domain",
-    difficulty: "medium",
-    text: { en: "Which protocol operates at the Transport Layer of the OSI model?", ta: "Which protocol operates at the Transport Layer of the OSI model?" },
+    category: "behavioral",
+    difficulty: "hard",
+    irt: params(1.24, 0.8, 0.18),
+    text: localize("SJT: A vendor offers gifts during contract evaluation. What is most appropriate?"),
     options: [
-      { en: "HTTP", ta: "HTTP" },
-      { en: "TCP", ta: "TCP" },
-      { en: "IP", ta: "IP" },
-      { en: "ARP", ta: "ARP" },
+      localize("Accept quietly"),
+      localize("Report via ethics process and recuse if required"),
+      localize("Ask for a bigger gift"),
+      localize("Ignore policy due to urgency"),
     ],
     correctIndex: 1,
   },
   {
     id: 15,
-    category: "domain",
+    category: "behavioral",
     difficulty: "medium",
-    text: { en: "What is the primary purpose of an operating system's scheduler?", ta: "What is the primary purpose of an operating system's scheduler?" },
+    irt: params(1.08, 0.15, 0.2),
+    text: localize("SJT: Two priorities conflict and both leaders ask for immediate delivery. First step?"),
     options: [
-      { en: "Memory allocation", ta: "Memory allocation" },
-      { en: "File management", ta: "File management" },
-      { en: "CPU time allocation among processes", ta: "CPU time allocation among processes" },
-      { en: "Network packet routing", ta: "Network packet routing" },
+      localize("Pick one randomly"),
+      localize("Clarify impact and negotiate a shared priority plan"),
+      localize("Promise both and stay silent"),
+      localize("Decline all work"),
     ],
-    correctIndex: 2,
+    correctIndex: 1,
   },
   {
     id: 16,
-    category: "domain",
-    difficulty: "hard",
-    text: { en: "What is the difference between a process and a thread?", ta: "What is the difference between a process and a thread?" },
+    category: "behavioral",
+    difficulty: "easy",
+    irt: params(0.9, -0.7, 0.24),
+    text: localize("SJT: You are assigned an unfamiliar toolchain. Best learning approach?"),
     options: [
-      { en: "Threads share memory space within a process; processes have separate memory", ta: "Threads share memory space within a process; processes have separate memory" },
-      { en: "Processes are faster than threads", ta: "Processes are faster than threads" },
-      { en: "Threads can only run on single-core processors", ta: "Threads can only run on single-core processors" },
-      { en: "There is no difference", ta: "There is no difference" },
+      localize("Wait for formal training only"),
+      localize("Build a small prototype and document learnings"),
+      localize("Skip toolchain validation"),
+      localize("Copy old code blindly"),
     ],
-    correctIndex: 0,
+    correctIndex: 1,
   },
   {
     id: 17,
-    category: "domain",
+    category: "behavioral",
     difficulty: "hard",
-    text: { en: "Which design pattern ensures a class has only one instance?", ta: "Which design pattern ensures a class has only one instance?" },
+    irt: params(1.26, 0.9, 0.17),
+    text: localize("SJT: Your model appears biased for one user group. What should you do?"),
     options: [
-      { en: "Factory", ta: "Factory" },
-      { en: "Observer", ta: "Observer" },
-      { en: "Singleton", ta: "Singleton" },
-      { en: "Strategy", ta: "Strategy" },
+      localize("Hide the metrics"),
+      localize("Document impact, pause rollout, run mitigation and fairness tests"),
+      localize("Blame the dataset owner"),
+      localize("Launch and monitor complaints"),
     ],
-    correctIndex: 2,
+    correctIndex: 1,
   },
   {
     id: 18,
-    category: "domain",
+    category: "behavioral",
     difficulty: "medium",
-    text: { en: "What is normalization in database design?", ta: "What is normalization in database design?" },
+    irt: params(1.1, 0.2, 0.2),
+    text: localize("SJT: A junior teammate asks repeated basic questions. Best response?"),
     options: [
-      { en: "Increasing data redundancy for faster queries", ta: "Increasing data redundancy for faster queries" },
-      { en: "Organizing data to reduce redundancy and dependency", ta: "Organizing data to reduce redundancy and dependency" },
-      { en: "Encrypting database tables", ta: "Encrypting database tables" },
-      { en: "Creating backup copies of data", ta: "Creating backup copies of data" },
+      localize("Tell them to figure it out alone"),
+      localize("Coach with examples and point to reusable references"),
+      localize("Do all their tasks"),
+      localize("Ask manager to remove them"),
     ],
     correctIndex: 1,
   },
+
   {
     id: 19,
     category: "domain",
-    difficulty: "hard",
-    text: { en: "In OOP, what does the SOLID 'L' (Liskov Substitution Principle) state?", ta: "In OOP, what does the SOLID 'L' (Liskov Substitution Principle) state?" },
-    options: [
-      { en: "Classes should be open for extension but closed for modification", ta: "Classes should be open for extension but closed for modification" },
-      { en: "Objects of a superclass should be replaceable with objects of its subclasses", ta: "Objects of a superclass should be replaceable with objects of its subclasses" },
-      { en: "A class should have only one reason to change", ta: "A class should have only one reason to change" },
-      { en: "High-level modules should not depend on low-level modules", ta: "High-level modules should not depend on low-level modules" },
-    ],
-    correctIndex: 1,
+    discipline: "cs",
+    difficulty: "easy",
+    irt: params(0.96, -0.95, 0.22),
+    text: localize("CS: Average-case time complexity of hash-table lookup is:"),
+    options: [localize("O(1)"), localize("O(log n)"), localize("O(n)"), localize("O(n log n)")],
+    correctIndex: 0,
   },
   {
     id: 20,
     category: "domain",
-    difficulty: "easy",
-    text: { en: "What does REST stand for in web development?", ta: "What does REST stand for in web development?" },
+    discipline: "cs",
+    difficulty: "medium",
+    irt: params(1.17, 0.05, 0.2),
+    text: localize("CS: Which isolation level prevents dirty reads but allows non-repeatable reads?"),
     options: [
-      { en: "Remote Execution of Server Tasks", ta: "Remote Execution of Server Tasks" },
-      { en: "Representational State Transfer", ta: "Representational State Transfer" },
-      { en: "Realtime Event Streaming Technology", ta: "Realtime Event Streaming Technology" },
-      { en: "Resource Endpoint Service Topology", ta: "Resource Endpoint Service Topology" },
+      localize("Read Uncommitted"),
+      localize("Read Committed"),
+      localize("Repeatable Read"),
+      localize("Serializable"),
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: 21,
+    category: "domain",
+    discipline: "cs",
+    difficulty: "hard",
+    irt: params(1.39, 1.02, 0.16),
+    text: localize("CS: In distributed systems, CAP theorem states under partition tolerance you can guarantee:"),
+    options: [
+      localize("Consistency and availability simultaneously"),
+      localize("Either consistency or availability"),
+      localize("Only latency"),
+      localize("No durability"),
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: 22,
+    category: "domain",
+    discipline: "mechanical",
+    difficulty: "easy",
+    irt: params(0.94, -0.9, 0.23),
+    text: localize("Mechanical: In SI units, torque is measured in:"),
+    options: [localize("N"), localize("Pa"), localize("N*m"), localize("J/s")],
+    correctIndex: 2,
+  },
+  {
+    id: 23,
+    category: "domain",
+    discipline: "mechanical",
+    difficulty: "medium",
+    irt: params(1.13, 0.12, 0.2),
+    text: localize("Mechanical: Which cycle is idealized for spark-ignition engines?"),
+    options: [localize("Diesel cycle"), localize("Otto cycle"), localize("Brayton cycle"), localize("Rankine cycle")],
+    correctIndex: 1,
+  },
+  {
+    id: 24,
+    category: "domain",
+    discipline: "mechanical",
+    difficulty: "hard",
+    irt: params(1.36, 1.0, 0.17),
+    text: localize("Mechanical: The primary function of a flywheel in machinery is to:"),
+    options: [
+      localize("Increase friction"),
+      localize("Store rotational energy and smooth speed fluctuations"),
+      localize("Reduce torque to zero"),
+      localize("Eliminate bearing loads"),
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: 25,
+    category: "domain",
+    discipline: "eee_ece",
+    difficulty: "easy",
+    irt: params(0.95, -0.88, 0.22),
+    text: localize("EEE/ECE: Unit of electrical resistance is:"),
+    options: [localize("Henry"), localize("Ohm"), localize("Farad"), localize("Weber")],
+    correctIndex: 1,
+  },
+  {
+    id: 26,
+    category: "domain",
+    discipline: "eee_ece",
+    difficulty: "medium",
+    irt: params(1.14, 0.08, 0.2),
+    text: localize("EEE/ECE: In a PN junction diode under forward bias, depletion region typically:"),
+    options: [
+      localize("Widens"),
+      localize("Narrows"),
+      localize("Disappears completely"),
+      localize("Becomes superconducting"),
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: 27,
+    category: "domain",
+    discipline: "eee_ece",
+    difficulty: "hard",
+    irt: params(1.4, 1.08, 0.16),
+    text: localize("EEE/ECE: Nyquist sampling theorem requires sampling frequency to be at least:"),
+    options: [
+      localize("Equal to highest frequency"),
+      localize("Twice the highest frequency"),
+      localize("Half the highest frequency"),
+      localize("Independent of signal frequency"),
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: 28,
+    category: "domain",
+    discipline: "civil",
+    difficulty: "easy",
+    irt: params(0.93, -0.92, 0.23),
+    text: localize("Civil: Slump test is used to measure:"),
+    options: [
+      localize("Compressive strength"),
+      localize("Workability of fresh concrete"),
+      localize("Setting time of cement"),
+      localize("Aggregate crushing value"),
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: 29,
+    category: "domain",
+    discipline: "civil",
+    difficulty: "medium",
+    irt: params(1.12, 0.14, 0.2),
+    text: localize("Civil: Which survey method is best for detailed small-area topography?"),
+    options: [
+      localize("Plane table survey"),
+      localize("Chain survey"),
+      localize("Levelling only"),
+      localize("GPS timing survey"),
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: 30,
+    category: "domain",
+    discipline: "civil",
+    difficulty: "hard",
+    irt: params(1.35, 0.98, 0.17),
+    text: localize("Civil: In limit state design, factor of safety is primarily addressed through:"),
+    options: [
+      localize("Working stress only"),
+      localize("Partial safety factors for loads and materials"),
+      localize("Ignoring variability"),
+      localize("Only increasing section size"),
     ],
     correctIndex: 1,
   },
@@ -314,20 +472,70 @@ export function toPublicQuestions(questions: InternalAssessmentQuestion[]): Publ
   return questions.map(({ correctIndex: _correctIndex, ...rest }) => rest)
 }
 
-export function getItemParameters(question: InternalAssessmentQuestion) {
+export function normalizeEngineeringDiscipline(value: unknown): EngineeringDiscipline | null {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, "_")
+  if (normalized === "cs" || normalized === "cse" || normalized === "computer_science") {
+    return "cs"
+  }
+
+  if (normalized === "mechanical" || normalized === "mech") {
+    return "mechanical"
+  }
+
+  if (normalized === "eee_ece" || normalized === "ece" || normalized === "eee" || normalized === "electronics") {
+    return "eee_ece"
+  }
+
+  if (normalized === "civil") {
+    return "civil"
+  }
+
+  return null
+}
+
+export function getAssessmentQuestionPool(discipline?: EngineeringDiscipline | null) {
+  return assessmentQuestionBank.filter((question) => {
+    if (question.category !== "domain") {
+      return true
+    }
+
+    if (!discipline) {
+      return true
+    }
+
+    return question.discipline === discipline
+  })
+}
+
+export function getQuestionCountsByCategory(discipline?: EngineeringDiscipline | null) {
+  const pool = getAssessmentQuestionPool(discipline)
+
+  return {
+    cognitive: pool.filter((question) => question.category === "cognitive").length,
+    behavioral: pool.filter((question) => question.category === "behavioral").length,
+    domain: pool.filter((question) => question.category === "domain").length,
+    total: pool.length,
+  }
+}
+
+export function getItemParameters(question: InternalAssessmentQuestion): Irt3plParameters {
   if (question.irt) {
     return question.irt
   }
 
   if (question.difficulty === "easy") {
-    return { a: 0.95, b: -0.8 }
+    return { a: 0.95, b: -0.8, c: 0.22 }
   }
 
   if (question.difficulty === "hard") {
-    return { a: 1.25, b: 0.8 }
+    return { a: 1.25, b: 0.8, c: 0.17 }
   }
 
-  return { a: 1.1, b: 0 }
+  return { a: 1.1, b: 0, c: 0.2 }
 }
 
 export function getQuestionById(questionId: number) {

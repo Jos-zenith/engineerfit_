@@ -20,6 +20,8 @@ create table if not exists public.assessment_attempts (
   overall_score int not null,
   irt_theta numeric(6,4) not null default 0,
   irt_score int not null default 50,
+  explanation jsonb,
+  anomaly_flags jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -46,6 +48,7 @@ create table if not exists public.assessment_responses (
   theta_after numeric(6,4),
   expected_probability numeric(8,6),
   information_value numeric(10,6),
+  anomaly_score numeric(6,4),
   created_at timestamptz not null default now()
 );
 

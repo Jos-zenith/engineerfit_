@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
-import { Terminal, Menu, X } from "lucide-react"
+import { Menu, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { getSupabaseClient } from "@/lib/supabase/client"
@@ -68,11 +69,15 @@ export function LandingNav() {
     <header className="sticky top-0 z-50 glass-strong">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-cyan/30 bg-cyan/10 glow-cyan">
-            <Terminal className="h-4 w-4 text-cyan" />
-          </div>
+          <Image
+            src="/pawn.jpg"
+            alt="engineerfit logo"
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-md border border-cyan/30 object-cover glow-cyan"
+          />
           <span className="text-sm font-bold text-foreground tracking-[0.15em] uppercase font-mono">
-            EngineerFit
+            engineerfit
           </span>
         </Link>
 

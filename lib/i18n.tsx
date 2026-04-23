@@ -42,6 +42,12 @@ const translations: Record<string, Record<Language, string>> = {
   "stats.colleges": { en: "Nodes Connected", ta: "முனைகள் இணைக்கப்பட்டன" },
   "stats.placement": { en: "Match Accuracy", ta: "பொருத்த துல்லியம்" },
   "stats.retention": { en: "Retention Rate", ta: "தக்கவைப்பு விகிதம்" },
+  "stats.targetKpi": { en: "Target KPI", ta: "இலக்கு KPI" },
+  "stats.pilotGoal": { en: "Pilot Goal", ta: "பைலட் இலக்கு" },
+  "stats.disclaimer": {
+    en: "Demo transparency: figures shown are pilot-phase goals and target KPIs, not audited production outcomes.",
+    ta: "டெமோ வெளிப்படை: இங்கே காட்டப்படும் எண்கள் பைலட் இலக்குகள் மற்றும் இலக்கு KPI-கள்; ஆய்வு செய்யப்பட்ட தயாரிப்பு முடிவுகள் அல்ல.",
+  },
   "lang.toggle": { en: "தமிழ்", ta: "English" },
   "lang.system": { en: "SYS:LANG", ta: "SYS:LANG" },
   "footer.tagline": { en: "Quantifying potential. Deterministic matching. Zero language bias.", ta: "திறனை அளவிடுதல். தீர்மானிக்கும் பொருத்தம். மொழி சார்பு இல்லை." },

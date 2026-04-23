@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
+import { normalizeEngineeringDiscipline } from "@/lib/assessment-bank"
 import { estimateTheta, thetaToScore, type IrtResponseObservation } from "@/lib/irt"
 import { computeAssessmentScores, getRoleRecommendations, type AnswerInput } from "@/lib/scoring"
 
 type SessionResponse = {
   questionId: number
+  discipline?: string | null
   selectedIndex: number
   confidence: "low" | "medium" | "high"
   timeSpent: number
@@ -12,6 +14,39 @@ type SessionResponse = {
   thetaAfter?: number
   expectedProbability?: number
   informationValue?: number
+}
+
+type SessionAnomalyFlags = {
+  rapidResponseCount: number
+  repeatedOptionStreak: number
+  highConfidenceMisses: number
+  anomalyScore: number
+}
+
+function analyzeSessionAnomalies(history: SessionResponse[]): SessionAnomalyFlags {
+  const rapidResponseCount = history.filter((item) => Number.isFinite(item.timeSpent) && item.timeSpent < 6).length
+
+  let repeatedOptionStreak = 1
+  let currentStreak = 1
+  for (let index = 1; index < history.length; index += 1) {
+    if (history[index].selectedIndex === history[index - 1].selectedIndex) {
+      currentStreak += 1
+      repeatedOptionStreak = Math.max(repeatedOptionStreak, currentStreak)
+    } else {
+      currentStreak = 1
+    }
+  }
+
+  const highConfidenceMisses = history.filter((item) => item.confidence === "high" && !item.correct).length
+  const answerCount = Math.max(history.length, 1)
+  const rawScore = (rapidResponseCount / answerCount) * 0.45 + (Math.max(repeatedOptionStreak - 2, 0) / answerCount) * 0.35 + (highConfidenceMisses / answerCount) * 0.2
+
+  return {
+    rapidResponseCount,
+    repeatedOptionStreak,
+    highConfidenceMisses,
+    anomalyScore: Number(Math.min(1, rawScore).toFixed(4)),
+  }
 }
 
 export async function finalizeSessionAndPersistAttempt(supabase: any, userId: string, session: {
@@ -32,13 +67,15 @@ export async function finalizeSessionAndPersistAttempt(supabase: any, userId: st
     timeSpent: item.timeSpent,
   }))
 
-  const scores = computeAssessmentScores(answerInputs)
   const observations: IrtResponseObservation[] = history.map((item) => ({
     questionId: item.questionId,
     correct: item.correct,
   }))
+  const discipline = normalizeEngineeringDiscipline(history.find((item) => item.discipline)?.discipline)
   const theta = estimateTheta(observations)
   const irtScore = thetaToScore(theta)
+  const scores = computeAssessmentScores(answerInputs, { irtScore, discipline })
+  const anomalyFlags = analyzeSessionAnomalies(history)
 
   const { data: attempt, error: attemptError } = await supabase
     .from("assessment_attempts")
@@ -53,6 +90,8 @@ export async function finalizeSessionAndPersistAttempt(supabase: any, userId: st
       overall_score: scores.overallScore,
       irt_theta: theta,
       irt_score: irtScore,
+      explanation: scores.explanation,
+      anomaly_flags: anomalyFlags,
     })
     .select("id")
     .single()
@@ -73,6 +112,7 @@ export async function finalizeSessionAndPersistAttempt(supabase: any, userId: st
       theta_after: item.thetaAfter ?? theta,
       expected_probability: item.expectedProbability ?? null,
       information_value: item.informationValue ?? null,
+      anomaly_score: anomalyFlags.anomalyScore,
     }
   })
 
@@ -103,6 +143,9 @@ export async function finalizeSessionAndPersistAttempt(supabase: any, userId: st
       roleAlignmentScore: scores.roleAlignmentScore,
       irtTheta: theta,
       irtScore,
+      confidenceBonus: scores.confidenceBonus,
+      explanation: scores.explanation,
+      anomalyFlags,
     },
     recommendedRoles: getRoleRecommendations(scores),
   })

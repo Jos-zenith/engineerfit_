@@ -1,11 +1,29 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
-import { assessmentQuestionBank, getQuestionById, toPublicQuestions } from "@/lib/assessment-bank"
+import {
+  type EngineeringDiscipline,
+  getItemParameters,
+  getQuestionById,
+  getQuestionCountsByCategory,
+  normalizeEngineeringDiscipline,
+  toPublicQuestions,
+} from "@/lib/assessment-bank"
 import { estimateTheta, itemInformation, probabilityCorrect, selectMostInformativeQuestion, type IrtResponseObservation } from "@/lib/irt"
 import { finalizeSessionAndPersistAttempt } from "@/lib/assessment-session"
+import { z } from "zod"
+
+const answerPayloadSchema = z.object({
+  sessionId: z.string().uuid(),
+  questionId: z.number().int().positive(),
+  selectedIndex: z.number().int().min(0).max(3),
+  confidence: z.enum(["low", "medium", "high"]),
+  timeSpent: z.number().positive(),
+  discipline: z.string().optional().nullable(),
+})
 
 interface SessionResponse {
   questionId: number
+  discipline?: EngineeringDiscipline | null
   selectedIndex: number
   confidence: "low" | "medium" | "high"
   timeSpent: number
@@ -22,16 +40,22 @@ export async function POST(request: NextRequest) {
     return auth.error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await request.json()
-  const sessionId = typeof body?.sessionId === "string" ? body.sessionId : ""
-  const questionId = Number(body?.questionId)
-  const selectedIndex = Number(body?.selectedIndex)
-  const confidence = body?.confidence === "low" || body?.confidence === "medium" || body?.confidence === "high" ? body.confidence : null
-  const timeSpent = Number(body?.timeSpent)
-
-  if (!sessionId || !Number.isFinite(questionId) || !Number.isFinite(selectedIndex) || !confidence || !Number.isFinite(timeSpent)) {
-    return NextResponse.json({ error: "Invalid answer payload" }, { status: 400 })
+  const body = await request.json().catch(() => null)
+  const parsed = answerPayloadSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({
+      error: "Invalid answer payload",
+      code: "VALIDATION_FAILED",
+      details: parsed.error.flatten(),
+    }, { status: 400 })
   }
+
+  const sessionId = parsed.data.sessionId
+  const questionId = parsed.data.questionId
+  const selectedIndex = parsed.data.selectedIndex
+  const discipline = normalizeEngineeringDiscipline(parsed.data.discipline)
+  const confidence = parsed.data.confidence
+  const timeSpent = parsed.data.timeSpent
 
   const { data: session, error: sessionError } = await auth.supabase
     .from("assessment_sessions")
@@ -72,19 +96,16 @@ export async function POST(request: NextRequest) {
 
   const thetaAfter = estimateTheta(observations, thetaBefore)
 
-  const defaultParams = question.difficulty === "easy"
-    ? { a: 0.95, b: -0.8 }
-    : question.difficulty === "hard"
-    ? { a: 1.25, b: 0.8 }
-    : { a: 1.1, b: 0 }
+  const defaultParams = getItemParameters(question)
 
-  const expectedProbability = probabilityCorrect(thetaBefore, defaultParams.a, defaultParams.b)
-  const informationValue = itemInformation(thetaBefore, defaultParams.a, defaultParams.b)
+  const expectedProbability = probabilityCorrect(thetaBefore, defaultParams.a, defaultParams.b, defaultParams.c)
+  const informationValue = itemInformation(thetaBefore, defaultParams.a, defaultParams.b, defaultParams.c)
 
   const newHistory: SessionResponse[] = [
     ...existingHistory,
     {
       questionId,
+      discipline,
       selectedIndex,
       confidence,
       timeSpent,
@@ -97,7 +118,8 @@ export async function POST(request: NextRequest) {
   ]
 
   const newAskedIds = [...askedQuestionIds, questionId]
-  const nextQuestion = selectMostInformativeQuestion(thetaAfter, newAskedIds)
+  const counts = getQuestionCountsByCategory(discipline)
+  const nextQuestion = selectMostInformativeQuestion(thetaAfter, newAskedIds, { discipline })
 
   const { error: updateError } = await auth.supabase
     .from("assessment_sessions")
@@ -127,7 +149,8 @@ export async function POST(request: NextRequest) {
     completed: false,
     theta: thetaAfter,
     answeredCount: newAskedIds.length,
-    totalQuestions: assessmentQuestionBank.length,
+    totalQuestions: counts.total,
+    categoryTotals: counts,
     question: toPublicQuestions([nextQuestion])[0],
   })
 }

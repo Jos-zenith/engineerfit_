@@ -21,12 +21,51 @@ function getRoleFromMetadata(user: { user_metadata?: Record<string, unknown> }) 
   return null
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".")
+  if (parts.length < 2) return null
+
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"))
+    return payload && typeof payload === "object" ? payload : null
+  } catch {
+    return null
+  }
+}
+
+function isTokenIssuerMismatch(accessToken: string) {
+  const payload = decodeJwtPayload(accessToken)
+  const iss = typeof payload?.iss === "string" ? payload.iss : null
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+  if (!iss || !supabaseUrl) return false
+
+  try {
+    const issuerHost = new URL(iss).host
+    const configuredHost = new URL(supabaseUrl).host
+    return issuerHost !== configuredHost
+  } catch {
+    return false
+  }
+}
+
 export async function requireAuth(request: NextRequest) {
   const authorization = request.headers.get("authorization")
   const accessToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null
 
   if (!accessToken) {
     return { error: new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }), user: null, supabase: null }
+  }
+
+  if (isTokenIssuerMismatch(accessToken)) {
+    return {
+      error: new Response(
+        JSON.stringify({ error: "Session belongs to a different Supabase project. Please sign out and sign in again." }),
+        { status: 401 }
+      ),
+      user: null,
+      supabase: null,
+    }
   }
 
   const supabase = createSupabaseForAccessToken(accessToken)

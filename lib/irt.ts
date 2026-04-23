@@ -1,4 +1,9 @@
-import { assessmentQuestionBank, getItemParameters, type InternalAssessmentQuestion } from "@/lib/assessment-bank"
+import {
+  getAssessmentQuestionPool,
+  getItemParameters,
+  type EngineeringDiscipline,
+  type InternalAssessmentQuestion,
+} from "@/lib/assessment-bank"
 
 export interface IrtResponseObservation {
   questionId: number
@@ -9,13 +14,43 @@ function clampTheta(theta: number) {
   return Math.max(-4, Math.min(4, theta))
 }
 
-export function probabilityCorrect(theta: number, a: number, b: number) {
-  return 1 / (1 + Math.exp(-a * (theta - b)))
+function safeProbability(value: number) {
+  return Math.max(1e-6, Math.min(1 - 1e-6, value))
 }
 
-export function itemInformation(theta: number, a: number, b: number) {
-  const p = probabilityCorrect(theta, a, b)
-  return (a * a) * p * (1 - p)
+export function probabilityCorrect(theta: number, a: number, b: number, c: number) {
+  const logistic = 1 / (1 + Math.exp(-a * (theta - b)))
+  return safeProbability(c + (1 - c) * logistic)
+}
+
+export function itemInformation(theta: number, a: number, b: number, c: number) {
+  const p = probabilityCorrect(theta, a, b, c)
+  const q = 1 - p
+  const numerator = (a * a) * Math.pow(p - c, 2) * q
+  const denominator = Math.pow(1 - c, 2) * p
+  return denominator <= 0 ? 0 : numerator / denominator
+}
+
+function logPosterior(theta: number, observations: IrtResponseObservation[]) {
+  const priorVariance = 1
+  const pool = getAssessmentQuestionPool()
+  const byId = new Map(pool.map((question) => [question.id, question]))
+
+  let ll = 0
+
+  for (const observation of observations) {
+    const question = byId.get(observation.questionId)
+    if (!question) {
+      continue
+    }
+
+    const { a, b, c } = getItemParameters(question)
+    const p = probabilityCorrect(theta, a, b, c)
+    ll += observation.correct ? Math.log(p) : Math.log(1 - p)
+  }
+
+  const prior = -((theta * theta) / (2 * priorVariance))
+  return ll + prior
 }
 
 export function estimateTheta(observations: IrtResponseObservation[], initialTheta = 0) {
@@ -24,25 +59,15 @@ export function estimateTheta(observations: IrtResponseObservation[], initialThe
   }
 
   let theta = initialTheta
-  const priorVariance = 1
+  const epsilon = 1e-2
 
-  for (let i = 0; i < 8; i += 1) {
-    let gradient = -theta / priorVariance
-    let hessian = -(1 / priorVariance)
+  for (let i = 0; i < 12; i += 1) {
+    const l0 = logPosterior(theta, observations)
+    const lp = logPosterior(theta + epsilon, observations)
+    const lm = logPosterior(theta - epsilon, observations)
 
-    for (const observation of observations) {
-      const question = assessmentQuestionBank.find((item) => item.id === observation.questionId)
-      if (!question) {
-        continue
-      }
-
-      const { a, b } = getItemParameters(question)
-      const p = probabilityCorrect(theta, a, b)
-      const u = observation.correct ? 1 : 0
-
-      gradient += a * (u - p)
-      hessian += -(a * a) * p * (1 - p)
-    }
+    const gradient = (lp - lm) / (2 * epsilon)
+    const hessian = (lp - (2 * l0) + lm) / (epsilon * epsilon)
 
     if (Math.abs(hessian) < 1e-6) {
       break
@@ -60,18 +85,20 @@ export function estimateTheta(observations: IrtResponseObservation[], initialThe
   return clampTheta(theta)
 }
 
-export function selectMostInformativeQuestion(theta: number, askedQuestionIds: number[]) {
+export function selectMostInformativeQuestion(theta: number, askedQuestionIds: number[], options?: { discipline?: EngineeringDiscipline | null }) {
   const asked = new Set(askedQuestionIds)
   let bestQuestion: InternalAssessmentQuestion | null = null
   let bestInformation = -1
 
-  for (const question of assessmentQuestionBank) {
+  const pool = getAssessmentQuestionPool(options?.discipline)
+
+  for (const question of pool) {
     if (asked.has(question.id)) {
       continue
     }
 
-    const { a, b } = getItemParameters(question)
-    const information = itemInformation(theta, a, b)
+    const { a, b, c } = getItemParameters(question)
+    const information = itemInformation(theta, a, b, c)
 
     if (information > bestInformation) {
       bestInformation = information

@@ -89,10 +89,52 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: jobsError.message }, { status: 500 })
   }
 
-  const job = jobs?.[0] ?? null
+  let job = jobs?.[0] ?? null
+  let sampleJobCreated = false
 
   if (!job) {
-    return NextResponse.json({ job: null, candidates: [] })
+    const sampleRequirements = {
+      cognitive: {
+        logicalReasoning: 70,
+        problemSolving: 65,
+        analyticalThinking: 60,
+      },
+      behavioral: {
+        conscientiousness: 65,
+        grit: 70,
+        teamwork: 60,
+      },
+      domain: {
+        dataStructures: 75,
+        webDevelopment: 70,
+        databases: 65,
+      },
+    }
+
+    const { data: createdJob, error: createJobError } = await auth.supabase
+      .from("job_postings")
+      .insert({
+        recruiter_id: auth.user.id,
+        title: "Junior Software Developer",
+        company: "TechCorp Solutions",
+        location: "Chennai, Tamil Nadu",
+        employment_type: "Full-Time, On-site",
+        salary_range: "4.5 - 6.0 LPA",
+        min_fit_score: 70,
+        min_career_hygiene_score: 60,
+        requirements: sampleRequirements,
+        job_vector: [70, 65, 60, 65, 70, 60],
+        is_active: true,
+      })
+      .select("id, title, company, location, employment_type, salary_range, requirements, job_vector, min_fit_score, min_career_hygiene_score")
+      .single()
+
+    if (createJobError) {
+      return NextResponse.json({ error: createJobError.message }, { status: 500 })
+    }
+
+    job = createdJob
+    sampleJobCreated = true
   }
 
   const { data: attempts, error: attemptsError } = await auth.supabase
@@ -123,7 +165,7 @@ export async function GET(request: NextRequest) {
     const overallFit = cosineSimilarityPercent(studentVector, jobVector)
     const initials = (profile?.full_name || "ST")
       .split(" ")
-      .map((part) => part[0])
+      .map((part: string) => part[0])
       .join("")
       .slice(0, 2)
       .toUpperCase()
@@ -160,6 +202,9 @@ export async function GET(request: NextRequest) {
       minCareerHygieneScore: job.min_career_hygiene_score,
     },
     candidates,
+    onboarding: {
+      sampleJobCreated,
+    },
   })
 }
 

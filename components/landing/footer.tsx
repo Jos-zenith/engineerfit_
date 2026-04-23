@@ -1,7 +1,7 @@
 "use client"
 
 import { useI18n } from "@/lib/i18n"
-import { Terminal } from "lucide-react"
+import Image from "next/image"
 
 export function LandingFooter() {
   const { t } = useI18n()
@@ -11,10 +11,14 @@ export function LandingFooter() {
       <div className="mx-auto max-w-7xl px-4 py-10 md:px-6">
         <div className="flex flex-col items-center gap-4 md:flex-row md:justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md border border-cyan/20 bg-cyan/10">
-              <Terminal className="h-3.5 w-3.5 text-cyan" />
-            </div>
-            <span className="text-xs font-bold font-mono tracking-[0.15em] uppercase text-foreground">EngineerFit</span>
+            <Image
+              src="/pawn.jpg"
+              alt="engineerfit logo"
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-md border border-cyan/20 object-cover"
+            />
+            <span className="text-xs font-bold font-mono tracking-[0.15em] uppercase text-foreground">engineerfit</span>
           </div>
           <p className="text-center text-xs text-muted-foreground font-mono tracking-wider">
             {t("footer.tagline")}

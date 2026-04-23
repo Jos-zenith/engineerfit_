@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
+import { assessmentQuestionBank, normalizeEngineeringDiscipline } from "@/lib/assessment-bank"
+import { estimateTheta, thetaToScore, type IrtResponseObservation } from "@/lib/irt"
 import { computeAssessmentScores, getRoleRecommendations, type AnswerInput } from "@/lib/scoring"
 
 export async function POST(request: NextRequest) {
@@ -10,12 +12,30 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   const answers = Array.isArray(body?.answers) ? (body.answers as AnswerInput[]) : []
+  const discipline = normalizeEngineeringDiscipline(body?.discipline)
 
   if (!answers.length) {
     return NextResponse.json({ error: "answers is required" }, { status: 400 })
   }
 
-  const scores = computeAssessmentScores(answers)
+  const byId = new Map(assessmentQuestionBank.map((question) => [question.id, question]))
+  const observations: IrtResponseObservation[] = answers
+    .map((answer) => {
+      const question = byId.get(answer.questionId)
+      if (!question) {
+        return null
+      }
+
+      return {
+        questionId: answer.questionId,
+        correct: answer.selectedIndex === question.correctIndex,
+      }
+    })
+    .filter((item): item is IrtResponseObservation => Boolean(item))
+
+  const theta = estimateTheta(observations)
+  const irtScore = thetaToScore(theta)
+  const scores = computeAssessmentScores(answers, { irtScore, discipline })
 
   const { data: attempt, error: attemptError } = await auth.supabase
     .from("assessment_attempts")
@@ -28,6 +48,9 @@ export async function POST(request: NextRequest) {
       career_hygiene_score: scores.careerHygieneScore,
       retention_prediction: scores.retentionPrediction,
       overall_score: scores.overallScore,
+      irt_theta: theta,
+      irt_score: irtScore,
+      explanation: scores.explanation,
     })
     .select("id")
     .single()
@@ -62,6 +85,10 @@ export async function POST(request: NextRequest) {
       careerHygieneScore: scores.careerHygieneScore,
       retentionPrediction: scores.retentionPrediction,
       roleAlignmentScore: scores.roleAlignmentScore,
+      irtTheta: theta,
+      irtScore,
+      confidenceBonus: scores.confidenceBonus,
+      explanation: scores.explanation,
     },
     recommendedRoles,
   })

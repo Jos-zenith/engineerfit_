@@ -13,25 +13,11 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'EngineerFit // Deterministic Career Matching Engine',
+  title: 'engineerfit',
   description:
     'Vernacular psychometric engine quantifying potential beyond language. IRT-adaptive assessments, cosine similarity matching, and precision placements for Tier-2/3 engineering students.',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
+    icon: '/pawn.jpg',
   },
 }
 

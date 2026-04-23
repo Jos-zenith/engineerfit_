@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
 import { getRoleRecommendations } from "@/lib/scoring"
 
+function formatDimensionLabel(dimension: string) {
+  if (dimension === "roleAlignment") {
+    return "Role Alignment"
+  }
+
+  return `${dimension.charAt(0).toUpperCase()}${dimension.slice(1)}`
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, "student")
   if (auth.error || !auth.user || !auth.supabase) {
@@ -20,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   const { data: attempt, error: attemptError } = await auth.supabase
     .from("assessment_attempts")
-    .select("cognitive_score, behavioral_score, domain_score, role_alignment_score, career_hygiene_score, retention_prediction, overall_score")
+    .select("cognitive_score, behavioral_score, domain_score, role_alignment_score, career_hygiene_score, retention_prediction, overall_score, explanation")
     .eq("user_id", auth.user.id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -35,11 +43,20 @@ export async function GET(request: NextRequest) {
   }
 
   const recommendations = getRoleRecommendations({
+    cognitiveScore: attempt.cognitive_score,
+    roleAlignmentScore: attempt.role_alignment_score,
     overallScore: attempt.overall_score,
     domainScore: attempt.domain_score,
     behavioralScore: attempt.behavioral_score,
     retentionPrediction: attempt.retention_prediction,
   })
+
+  const strongestDimensions = Array.isArray((attempt.explanation as any)?.strongestDimensions)
+    ? (attempt.explanation as any).strongestDimensions
+    : []
+  const riskDimensions = Array.isArray((attempt.explanation as any)?.riskDimensions)
+    ? (attempt.explanation as any).riskDimensions
+    : []
 
   return NextResponse.json({
     profile: {
@@ -72,8 +89,13 @@ export async function GET(request: NextRequest) {
         { code: "S", label: "Social", score: Math.max(0, attempt.behavioral_score - 12) },
         { code: "E", label: "Enterprising", score: Math.round((attempt.behavioral_score + attempt.cognitive_score) / 2) },
       ],
-      topStrengths: ["Logical Reasoning", "Learning Agility", "Technical Skills"],
-      developmentAreas: ["Communication", "Teamwork", "Conscientiousness"],
+      topStrengths: strongestDimensions.length
+        ? strongestDimensions.map((item: { dimension: string; score: number }) => `${formatDimensionLabel(item.dimension)} (${item.score})`)
+        : ["Logical Reasoning", "Learning Agility", "Technical Skills"],
+      developmentAreas: riskDimensions.length
+        ? riskDimensions.map((item: { dimension: string; score: number }) => `${formatDimensionLabel(item.dimension)} (${item.score})`)
+        : ["Communication", "Teamwork", "Conscientiousness"],
+      explanation: attempt.explanation ?? null,
       recommendedRoles: recommendations,
     },
   })
