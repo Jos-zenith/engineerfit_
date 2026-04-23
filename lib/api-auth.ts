@@ -68,8 +68,26 @@ export async function requireAuth(request: NextRequest) {
     }
   }
 
-  const supabase = createSupabaseForAccessToken(accessToken)
-  const { data: authData, error: authError } = await supabase.auth.getUser()
+  let supabase
+
+  try {
+    supabase = createSupabaseForAccessToken(accessToken)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to initialize Supabase client"
+    return {
+      error: new Response(JSON.stringify({ error: message }), { status: 500 }),
+      user: null,
+      supabase: null,
+    }
+  }
+
+  const { data: authData, error: authError } = await supabase.auth.getUser().catch((error) => {
+    const message = error instanceof Error ? error.message : "Unable to verify user session"
+    return {
+      data: { user: null },
+      error: { message },
+    }
+  })
 
   if (authError || !authData.user) {
     return { error: new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }), user: null, supabase: null }
