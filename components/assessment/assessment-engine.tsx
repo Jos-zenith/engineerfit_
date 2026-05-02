@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { useI18n } from "@/lib/i18n"
 import { type Confidence, type EngineeringDiscipline, type PublicAssessmentQuestion, type QuestionCategory } from "@/lib/assessment-bank"
 import { fetchWithAuth } from "@/lib/auth-fetch"
-import { getSupabaseClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -62,6 +62,7 @@ const categoryConfig: Record<QuestionCategory, { icon: typeof Brain; label: stri
 export function AssessmentEngine() {
   const { language, setLanguage, t } = useI18n()
   const router = useRouter()
+  const { data: session, status } = useSession()
   const [selectedDiscipline, setSelectedDiscipline] = useState<EngineeringDiscipline | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState<PublicAssessmentQuestion | null>(null)
@@ -86,25 +87,22 @@ export function AssessmentEngine() {
       return
     }
 
+    if (status === "loading") {
+      return
+    }
+
+    // Redirect to auth if not authenticated
+    if (status === "unauthenticated") {
+      setErrorMessage("Please login to start your assessment.")
+      router.push("/auth")
+      return
+    }
+
     let active = true
-    const supabase = getSupabaseClient()
 
     async function startSession() {
       setIsLoading(true)
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-
-        if (!session) {
-          if (active) {
-            setErrorMessage("Please login to start your assessment.")
-            setIsLoading(false)
-          }
-          router.push("/auth")
-          return
-        }
-
         const probeResponse = await fetchWithAuth("/api/assessment/session/start", {
           method: "POST",
           headers: {
@@ -181,7 +179,7 @@ export function AssessmentEngine() {
     return () => {
       active = false
     }
-  }, [router, selectedDiscipline])
+  }, [router, selectedDiscipline, status])
 
   const progress = totalQuestions ? (answeredCount / totalQuestions) * 100 : 0
   const catConfig = categoryConfig[currentQuestion?.category ?? "cognitive"]

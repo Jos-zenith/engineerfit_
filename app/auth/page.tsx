@@ -2,13 +2,13 @@
 
 import { FormEvent, useState } from "react"
 import { useRouter } from "next/navigation"
+import { signIn } from "next-auth/react"
 import { I18nProvider } from "@/lib/i18n"
 import { LandingNav } from "@/components/landing/nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { getSupabaseClient } from "@/lib/supabase/client"
 import { fetchWithAuth } from "@/lib/auth-fetch"
 
 type Role = "student" | "recruiter"
@@ -55,20 +55,6 @@ function AuthCard() {
       throw new Error(payload?.error || "Unable to save profile")
     }
 
-    if (payload?.syncMetadataOnClient) {
-      const supabase = getSupabaseClient()
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          role: nextRole,
-          full_name: nextFullName || null,
-        },
-      })
-
-      if (metadataError) {
-        throw metadataError
-      }
-    }
-
     return payload
   }
 
@@ -79,24 +65,36 @@ function AuthCard() {
     setMessage(null)
 
     try {
-      const supabase = getSupabaseClient()
+
 
       if (mode === "login") {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
+        const result = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+        })
 
-        await saveProfile(role, fullName, data.session?.access_token)
+        if (result?.error) {
+          throw new Error(result.error)
+        }
+
+        await saveProfile(role, fullName)
         setMessage("Signed in successfully.")
       } else {
-        const { data, error } = await supabase.auth.signUp({ email, password })
-        if (error) throw error
+        // Sign up is handled by credentials provider - it creates user if doesn't exist
+        const result = await signIn("credentials", {
+          email,
+          password,
+          isSignUp: true,
+          redirect: false,
+        })
 
-        if (data.session) {
-          await saveProfile(role, fullName, data.session.access_token)
-        } else {
-          setMessage("Account created. Verify your email, then sign in.")
-          return
+        if (result?.error) {
+          throw new Error(result.error)
         }
+
+        await saveProfile(role, fullName)
+        setMessage("Account created successfully.")
       }
 
       router.push(role === "recruiter" ? "/recruiter" : "/assessment")

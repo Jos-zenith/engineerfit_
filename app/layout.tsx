@@ -1,15 +1,20 @@
-import type { Metadata, Viewport } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
-import './globals.css'
+import type { Metadata, Viewport } from "next"
+import { Inter, JetBrains_Mono } from "next/font/google"
+import { ClientSessionProvider } from "@/components/session-provider"
+import "./globals.css"
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
+  fallback: ['system-ui', 'arial'],
+  preload: false,
 })
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-jetbrains',
+  fallback: ['system-ui', 'monospace'],
+  preload: false,
 })
 
 export const metadata: Metadata = {
@@ -36,7 +41,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans antialiased bg-background text-foreground">
-        {children}
+        <ClientSessionProvider>
+          {children}
+        </ClientSessionProvider>
       </body>
     </html>
   )

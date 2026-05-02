@@ -1,43 +1,34 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { getToken } from "next-auth/jwt";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
+/**
+ * Middleware for authentication and request processing.
+ * This uses the Edge Runtime and can inspect/modify requests before they reach your app.
+ */
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
 
-  const supabase = createServerClient(
-    supabaseUrl!,
-    supabaseKey!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-          response = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
-        },
-      },
-    },
-  );
+  // Use NextAuth JWT in middleware to check session presence.
+  try {
+    const token = await getToken({ 
+      req: request as any, 
+      secret: process.env.NEXTAUTH_SECRET 
+    });
+    // You can inspect `token` and conditionally redirect/protect routes here.
+  } catch (error) {
+    console.error('Token validation error:', error);
+  }
 
-  // Refresh session to keep it valid and propagate to response cookies
-  const { data: { user } } = await supabase.auth.getUser()
-
-  return response
+  return response;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
-}
+  matcher: [
+    // Match all routes except static assets and images
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
+};

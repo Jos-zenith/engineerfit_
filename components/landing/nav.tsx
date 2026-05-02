@@ -2,12 +2,12 @@
 
 import Link from "next/link"
 import Image from "next/image"
+import { useSession, signOut } from "next-auth/react"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { getSupabaseClient } from "@/lib/supabase/client"
 import { fetchWithAuth } from "@/lib/auth-fetch"
 
 interface AuthState {
@@ -17,21 +17,24 @@ interface AuthState {
 
 export function LandingNav() {
   const { language, setLanguage, t } = useI18n()
+    const { data: session, status } = useSession()
   const [open, setOpen] = useState(false)
   const [auth, setAuth] = useState<AuthState>({ email: null, role: null })
 
   useEffect(() => {
+    if (status === "loading") {
+      return
+    }
+
+    if (status === "unauthenticated") {
+      setAuth({ email: null, role: null })
+      return
+    }
+
     let active = true
-    const supabase = getSupabaseClient()
 
     async function hydrateAuth() {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const email = sessionData.session?.user.email ?? null
-
-      if (!email) {
-        if (active) {
-          setAuth({ email: null, role: null })
-        }
+      if (!session?.user?.email) {
         return
       }
 
@@ -43,25 +46,20 @@ export function LandingNav() {
       }
 
       setAuth({
-        email,
+        email: session.user.email,
         role: payload?.profile?.role ?? null,
       })
     }
 
     void hydrateAuth()
-    const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      void hydrateAuth()
-    })
 
     return () => {
       active = false
-      listener.subscription.unsubscribe()
     }
-  }, [])
+  }, [session, status])
 
   async function handleSignOut() {
-    const supabase = getSupabaseClient()
-    await supabase.auth.signOut()
+    await signOut({ redirect: false })
     setAuth({ email: null, role: null })
   }
 
