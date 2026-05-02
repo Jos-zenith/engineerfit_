@@ -1,99 +1,94 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/api-auth"
+import { getToken } from "next-auth/jwt"
+import { prisma } from "@/lib/prisma"
 
-function isMissingProfilesTableError(message?: string) {
-  if (!message) return false
-
-  const normalized = message.toLowerCase()
-  return (
-    normalized.includes("could not find the table 'public.profiles' in the schema cache") ||
-    normalized.includes('relation "profiles" does not exist') ||
-    normalized.includes('relation "public.profiles" does not exist')
-  )
-}
-
-function metadataToProfile(user: { id: string; user_metadata?: Record<string, unknown> }) {
-  const metadata = user.user_metadata ?? {}
-  const role = metadata.role === "student" || metadata.role === "recruiter" ? metadata.role : null
-  const fullName = typeof metadata.full_name === "string" ? metadata.full_name : null
+function tokenToUser(token: Awaited<ReturnType<typeof getToken>>) {
+  if (!token?.sub) {
+    return null
+  }
 
   return {
-    id: user.id,
-    role,
-    full_name: fullName,
+    id: token.sub,
+    email: typeof token.email === "string" ? token.email : null,
+    name: typeof token.name === "string" ? token.name : null,
+    role: token.role === "student" || token.role === "recruiter" ? token.role : null,
+    fullName: typeof token.full_name === "string" ? token.full_name : null,
+  }
+}
+
+async function requireSessionUser(request: NextRequest) {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
+  return tokenToUser(token)
+}
+
+function profileToResponse(profile: { id: string; displayName: string; role: string | null }) {
+  return {
+    id: profile.id,
+    role: profile.role === "student" || profile.role === "recruiter" ? profile.role : null,
+    full_name: profile.displayName,
   }
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request)
-  if (auth.error || !auth.user || !auth.supabase) {
-    return auth.error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const user = await requireSessionUser(request)
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { data: profile, error } = await auth.supabase
-    .from("profiles")
-    .select("id, full_name, role")
-    .eq("id", auth.user.id)
-    .maybeSingle()
+  const profile = await prisma.assessmentProfile.findFirst({
+    where: { userId: user.id },
+  })
 
-  if (error) {
-    if (isMissingProfilesTableError(error.message)) {
-      return NextResponse.json({
-        profile: metadataToProfile(auth.user),
-        user: { id: auth.user.id, email: auth.user.email },
-        degraded: true,
-      })
-    }
-
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  const resolvedProfile = profile ?? metadataToProfile(auth.user)
+  const resolvedProfile = profile
+    ? profileToResponse(profile)
+    : {
+        id: user.id,
+        role: user.role,
+        full_name: user.fullName ?? user.name ?? user.email ?? "User",
+      }
 
   return NextResponse.json({
     profile: resolvedProfile,
-    user: { id: auth.user.id, email: auth.user.email },
+    user: { id: user.id, email: user.email },
   })
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request)
-  if (auth.error || !auth.user || !auth.supabase) {
-    return auth.error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const user = await requireSessionUser(request)
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const body = await request.json()
   const role = body?.role === "recruiter" ? "recruiter" : "student"
   const fullName = typeof body?.fullName === "string" ? body.fullName.trim() : null
 
-  const { data, error } = await auth.supabase
-    .from("profiles")
-    .upsert(
-      {
-        id: auth.user.id,
-        role,
-        full_name: fullName,
-      },
-      { onConflict: "id" }
-    )
-    .select("id, full_name, role")
-    .single()
+  const displayName = fullName || user.fullName || user.name || user.email || "User"
 
-  if (error) {
-    if (isMissingProfilesTableError(error.message)) {
-      return NextResponse.json({
-        profile: {
-          id: auth.user.id,
+  const existingProfile = await prisma.assessmentProfile.findFirst({
+    where: { userId: user.id },
+  })
+
+  const profile = existingProfile
+    ? await prisma.assessmentProfile.update({
+        where: { id: existingProfile.id },
+        data: {
+          displayName,
           role,
-          full_name: fullName,
         },
-        degraded: true,
-        syncMetadataOnClient: true,
       })
-    }
+    : await prisma.assessmentProfile.create({
+        data: {
+          userId: user.id,
+          displayName,
+          role,
+        },
+      })
 
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { name: displayName },
+  })
 
-  return NextResponse.json({ profile: data })
+  return NextResponse.json({ profile: profileToResponse(profile) })
 }

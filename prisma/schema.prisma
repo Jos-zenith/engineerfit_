@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -20,6 +20,8 @@ model User {
   profiles  AssessmentProfile[]
   accounts  Account[]
   sessions  Session[]
+  assessmentSessions AssessmentSession[] @relation("AssessmentSessions")
+  assessmentAttempts AssessmentAttempt[] @relation("AssessmentAttempts")
 
   @@map("users")
 }
@@ -64,10 +66,67 @@ model AssessmentProfile {
   id          String   @id @default(cuid())
   userId      String
   displayName String
+  role        String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("assessment_profiles")
+}
+
+model AssessmentSession {
+  id                   String   @id @default(cuid())
+  userId               String
+  theta                Float    @default(0)
+  asked_question_ids   String   @default("[]")
+  response_history     String   @default("[]")
+  status               String   @default("active")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation("AssessmentSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("assessment_sessions")
+}
+
+model AssessmentAttempt {
+  id                      String   @id @default(cuid())
+  userId                  String
+  cognitive_score         Float?
+  behavioral_score        Float?
+  domain_score            Float?
+  role_alignment_score    Float?
+  career_hygiene_score    Float?
+  retention_prediction    Float?
+  overall_score           Float?
+  irt_theta               Float?
+  irt_score               Float?
+  explanation             String?
+  createdAt               DateTime @default(now())
+
+  user User @relation("AssessmentAttempts", fields: [userId], references: [id], onDelete: Cascade)
+  responses AssessmentResponse[]
+
+  @@index([userId])
+  @@map("assessment_attempts")
+}
+
+model AssessmentResponse {
+  id                  String   @id @default(cuid())
+  attempt_id          String
+  question_id         Int
+  selected_index      Int
+  confidence          String
+  time_spent_seconds  Float?
+  is_correct          Boolean?
+  createdAt           DateTime @default(now())
+
+  attempt AssessmentAttempt @relation(fields: [attempt_id], references: [id], onDelete: Cascade)
+
+  @@index([attempt_id])
+  @@index([question_id])
+  @@map("assessment_responses")
 }

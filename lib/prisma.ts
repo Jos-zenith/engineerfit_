@@ -9,10 +9,9 @@ declare global {
 const connectionString = process.env.DATABASE_URL
 
 if (!connectionString) {
-  throw new Error("DATABASE_URL is missing. Set it in .env before using Prisma.")
+  throw new Error("DATABASE_URL is missing. Set it to a SQLite file URL like file:./prisma/dev.db in .env before using Prisma.")
 }
 
-// Use default Prisma configuration with standard PostgreSQL client
 const prisma = global.prisma ?? new PrismaClient({
   log: process.env.NODE_ENV !== "production" ? ["error"] : undefined,
 })

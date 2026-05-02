@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
+import { prisma } from "@/lib/prisma"
 import {
   type EngineeringDiscipline,
   getItemParameters,
@@ -36,7 +37,7 @@ interface SessionResponse {
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, "student")
-  if (auth.error || !auth.user || !auth.supabase) {
+  if (auth.error || !auth.user) {
     return auth.error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -57,22 +58,19 @@ export async function POST(request: NextRequest) {
   const confidence = parsed.data.confidence
   const timeSpent = parsed.data.timeSpent
 
-  const { data: session, error: sessionError } = await auth.supabase
-    .from("assessment_sessions")
-    .select("id, user_id, theta, asked_question_ids, response_history, status")
-    .eq("id", sessionId)
-    .eq("user_id", auth.user.id)
-    .single()
+  const session = await prisma.assessmentSession.findUnique({
+    where: { id: sessionId },
+  })
 
-  if (sessionError || !session) {
-    return NextResponse.json({ error: sessionError?.message ?? "Session not found" }, { status: 404 })
+  if (!session || session.userId !== auth.user.id) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 })
   }
 
   if (session.status !== "active") {
     return NextResponse.json({ error: "Session is already completed" }, { status: 400 })
   }
 
-  const askedQuestionIds: number[] = Array.isArray(session.asked_question_ids) ? session.asked_question_ids : []
+  const askedQuestionIds: number[] = JSON.parse(session.asked_question_ids || "[]")
   if (askedQuestionIds.includes(questionId)) {
     return NextResponse.json({ error: "Question already answered" }, { status: 409 })
   }
@@ -82,12 +80,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Question not found" }, { status: 404 })
   }
 
-  const thetaBefore = Number(session.theta || 0)
+  const thetaBefore = session.theta
   const correct = selectedIndex === question.correctIndex
 
-  const existingHistory: SessionResponse[] = Array.isArray(session.response_history)
-    ? session.response_history
-    : []
+  const existingHistory: SessionResponse[] = JSON.parse(session.response_history || "[]")
 
   const observations: IrtResponseObservation[] = [
     ...existingHistory.map((entry) => ({ questionId: entry.questionId, correct: entry.correct })),
@@ -121,24 +117,19 @@ export async function POST(request: NextRequest) {
   const counts = getQuestionCountsByCategory(discipline)
   const nextQuestion = selectMostInformativeQuestion(thetaAfter, newAskedIds, { discipline })
 
-  const { error: updateError } = await auth.supabase
-    .from("assessment_sessions")
-    .update({
+  await prisma.assessmentSession.update({
+    where: { id: sessionId },
+    data: {
       theta: thetaAfter,
-      asked_question_ids: newAskedIds,
-      response_history: newHistory,
+      asked_question_ids: JSON.stringify(newAskedIds),
+      response_history: JSON.stringify(newHistory),
       status: nextQuestion ? "active" : "completed",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", sessionId)
-    .eq("user_id", auth.user.id)
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
-  }
+      updatedAt: new Date(),
+    },
+  })
 
   if (!nextQuestion) {
-    return finalizeSessionAndPersistAttempt(auth.supabase, auth.user.id, {
+    return finalizeSessionAndPersistAttempt(auth.user.id, {
       id: sessionId,
       response_history: newHistory,
       status: "completed",

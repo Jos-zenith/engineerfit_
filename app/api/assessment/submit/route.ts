@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
+import { prisma } from "@/lib/prisma"
 import { assessmentQuestionBank, normalizeEngineeringDiscipline } from "@/lib/assessment-bank"
 import { estimateTheta, thetaToScore, type IrtResponseObservation } from "@/lib/irt"
 import { computeAssessmentScores, getRoleRecommendations, type AnswerInput } from "@/lib/scoring"
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, "student")
-  if (auth.error || !auth.user || !auth.supabase) {
+  if (auth.error || !auth.user) {
     return auth.error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -37,10 +38,9 @@ export async function POST(request: NextRequest) {
   const irtScore = thetaToScore(theta)
   const scores = computeAssessmentScores(answers, { irtScore, discipline })
 
-  const { data: attempt, error: attemptError } = await auth.supabase
-    .from("assessment_attempts")
-    .insert({
-      user_id: auth.user.id,
+  const attempt = await prisma.assessmentAttempt.create({
+    data: {
+      userId: auth.user.id,
       cognitive_score: scores.cognitiveScore,
       behavioral_score: scores.behavioralScore,
       domain_score: scores.domainScore,
@@ -50,14 +50,9 @@ export async function POST(request: NextRequest) {
       overall_score: scores.overallScore,
       irt_theta: theta,
       irt_score: irtScore,
-      explanation: scores.explanation,
-    })
-    .select("id")
-    .single()
-
-  if (attemptError || !attempt) {
-    return NextResponse.json({ error: attemptError?.message ?? "Failed to save attempt" }, { status: 500 })
-  }
+      explanation: scores.explanation ? JSON.stringify(scores.explanation) : null,
+    },
+  })
 
   const responseRows = scores.evaluatedAnswers.map((answer) => ({
     attempt_id: attempt.id,
@@ -68,11 +63,9 @@ export async function POST(request: NextRequest) {
     is_correct: answer.correct,
   }))
 
-  const { error: responseError } = await auth.supabase.from("assessment_responses").insert(responseRows)
-
-  if (responseError) {
-    return NextResponse.json({ error: responseError.message }, { status: 500 })
-  }
+  await prisma.assessmentResponse.createMany({
+    data: responseRows,
+  })
 
   const recommendedRoles = getRoleRecommendations(scores)
 

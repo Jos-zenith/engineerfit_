@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { normalizeEngineeringDiscipline } from "@/lib/assessment-bank"
 import { estimateTheta, thetaToScore, type IrtResponseObservation } from "@/lib/irt"
 import { computeAssessmentScores, getRoleRecommendations, type AnswerInput } from "@/lib/scoring"
+import { prisma } from "@/lib/prisma"
 
 type SessionResponse = {
   questionId: number
@@ -49,11 +50,14 @@ function analyzeSessionAnomalies(history: SessionResponse[]): SessionAnomalyFlag
   }
 }
 
-export async function finalizeSessionAndPersistAttempt(supabase: any, userId: string, session: {
-  id: string
-  response_history: SessionResponse[] | null
-  status: string
-}) {
+export async function finalizeSessionAndPersistAttempt(
+  userId: string,
+  session: {
+    id: string
+    response_history: SessionResponse[] | null
+    status: string
+  }
+) {
   const history = Array.isArray(session.response_history) ? session.response_history : []
 
   if (!history.length) {
@@ -77,10 +81,9 @@ export async function finalizeSessionAndPersistAttempt(supabase: any, userId: st
   const scores = computeAssessmentScores(answerInputs, { irtScore, discipline })
   const anomalyFlags = analyzeSessionAnomalies(history)
 
-  const { data: attempt, error: attemptError } = await supabase
-    .from("assessment_attempts")
-    .insert({
-      user_id: userId,
+  const attempt = await prisma.assessmentAttempt.create({
+    data: {
+      userId,
       cognitive_score: scores.cognitiveScore,
       behavioral_score: scores.behavioralScore,
       domain_score: scores.domainScore,
@@ -90,15 +93,9 @@ export async function finalizeSessionAndPersistAttempt(supabase: any, userId: st
       overall_score: scores.overallScore,
       irt_theta: theta,
       irt_score: irtScore,
-      explanation: scores.explanation,
-      anomaly_flags: anomalyFlags,
-    })
-    .select("id")
-    .single()
-
-  if (attemptError || !attempt) {
-    return NextResponse.json({ error: attemptError?.message ?? "Failed to save attempt" }, { status: 500 })
-  }
+      explanation: scores.explanation ? JSON.stringify({ ...scores.explanation, anomalyFlags }) : JSON.stringify({ anomalyFlags }),
+    },
+  })
 
   const responseRows = history.map((item) => {
     return {
@@ -108,28 +105,21 @@ export async function finalizeSessionAndPersistAttempt(supabase: any, userId: st
       confidence: item.confidence,
       time_spent_seconds: item.timeSpent,
       is_correct: item.correct,
-      theta_before: item.thetaBefore ?? null,
-      theta_after: item.thetaAfter ?? theta,
-      expected_probability: item.expectedProbability ?? null,
-      information_value: item.informationValue ?? null,
-      anomaly_score: anomalyFlags.anomalyScore,
     }
   })
 
-  const { error: responseError } = await supabase.from("assessment_responses").insert(responseRows)
-  if (responseError) {
-    return NextResponse.json({ error: responseError.message }, { status: 500 })
-  }
+  await prisma.assessmentResponse.createMany({
+    data: responseRows,
+  })
 
-  const { error: sessionUpdateError } = await supabase
-    .from("assessment_sessions")
-    .update({ status: "completed", theta, updated_at: new Date().toISOString() })
-    .eq("id", session.id)
-    .eq("user_id", userId)
-
-  if (sessionUpdateError) {
-    return NextResponse.json({ error: sessionUpdateError.message }, { status: 500 })
-  }
+  await prisma.assessmentSession.update({
+    where: { id: session.id },
+    data: {
+      status: "completed",
+      theta,
+      updatedAt: new Date(),
+    },
+  })
 
   return NextResponse.json({
     completed: true,

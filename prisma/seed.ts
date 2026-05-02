@@ -18,15 +18,16 @@ async function main() {
 
   await prisma.assessmentProfile.upsert({
     where: { id: "seed-profile-1" },
-    update: {},
+    update: { role: "student" },
     create: {
       id: "seed-profile-1",
       userId: user.id,
       displayName: "Alex",
+      role: "student",
     },
   })
 
-  console.log(`Seeded Prisma Postgres data for ${user.email}`)
+  console.log(`Seeded Prisma data for ${user.email}`)
 }
 
 main()

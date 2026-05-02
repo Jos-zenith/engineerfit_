@@ -23,6 +23,8 @@ const pillars = [
 
 /* SVG Vector Mesh Orb representing the Matching Engine */
 function VectorMeshOrb() {
+  const toCoord = (value: number) => Number(value.toFixed(2))
+
   return (
     <div className="relative mx-auto w-[280px] h-[280px] md:w-[360px] md:h-[360px]">
       {/* Outer glow */}
@@ -39,10 +41,10 @@ function VectorMeshOrb() {
         {[0, 30, 60, 90, 120, 150].map((angle) => (
           <line
             key={angle}
-            x1={200 + 180 * Math.cos((angle * Math.PI) / 180)}
-            y1={200 + 180 * Math.sin((angle * Math.PI) / 180)}
-            x2={200 + 180 * Math.cos(((angle + 180) * Math.PI) / 180)}
-            y2={200 + 180 * Math.sin(((angle + 180) * Math.PI) / 180)}
+            x1={toCoord(200 + 180 * Math.cos((angle * Math.PI) / 180))}
+            y1={toCoord(200 + 180 * Math.sin((angle * Math.PI) / 180))}
+            x2={toCoord(200 + 180 * Math.cos(((angle + 180) * Math.PI) / 180))}
+            y2={toCoord(200 + 180 * Math.sin(((angle + 180) * Math.PI) / 180))}
             stroke="rgba(34,211,238,0.08)"
             strokeWidth="0.5"
           />
@@ -50,11 +52,11 @@ function VectorMeshOrb() {
 
         {/* Inner hexagonal mesh */}
         {[0, 60, 120, 180, 240, 300].map((angle, i) => {
-          const x = 200 + 100 * Math.cos((angle * Math.PI) / 180)
-          const y = 200 + 100 * Math.sin((angle * Math.PI) / 180)
+          const x = toCoord(200 + 100 * Math.cos((angle * Math.PI) / 180))
+          const y = toCoord(200 + 100 * Math.sin((angle * Math.PI) / 180))
           const nextAngle = (angle + 60) % 360
-          const nx = 200 + 100 * Math.cos((nextAngle * Math.PI) / 180)
-          const ny = 200 + 100 * Math.sin((nextAngle * Math.PI) / 180)
+          const nx = toCoord(200 + 100 * Math.cos((nextAngle * Math.PI) / 180))
+          const ny = toCoord(200 + 100 * Math.sin((nextAngle * Math.PI) / 180))
           return (
             <g key={`hex-${i}`}>
               <line x1={x} y1={y} x2={nx} y2={ny} stroke="rgba(167,139,250,0.15)" strokeWidth="1" />
@@ -66,15 +68,15 @@ function VectorMeshOrb() {
 
         {/* Outer vertex nodes */}
         {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => {
-          const x = 200 + 170 * Math.cos((angle * Math.PI) / 180)
-          const y = 200 + 170 * Math.sin((angle * Math.PI) / 180)
+          const x = toCoord(200 + 170 * Math.cos((angle * Math.PI) / 180))
+          const y = toCoord(200 + 170 * Math.sin((angle * Math.PI) / 180))
           return <circle key={`outer-${i}`} cx={x} cy={y} r="2" fill="rgba(167,139,250,0.3)" />
         })}
 
         {/* Mid-ring nodes */}
         {[15, 75, 135, 195, 255, 315].map((angle, i) => {
-          const x = 200 + 140 * Math.cos((angle * Math.PI) / 180)
-          const y = 200 + 140 * Math.sin((angle * Math.PI) / 180)
+          const x = toCoord(200 + 140 * Math.cos((angle * Math.PI) / 180))
+          const y = toCoord(200 + 140 * Math.sin((angle * Math.PI) / 180))
           return <circle key={`mid-${i}`} cx={x} cy={y} r="2" fill="rgba(52,211,153,0.4)" />
         })}
 
