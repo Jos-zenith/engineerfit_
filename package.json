@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node ./scripts/generate-prisma.js && next build",
+    "build": "DATABASE_URL='file:./prisma/dev.db' node ./scripts/generate-prisma.js && next build",
     "start": "next start",
     "lint": "eslint .",
     "verify:prisma": "tsx scripts/verify-prisma.ts"
