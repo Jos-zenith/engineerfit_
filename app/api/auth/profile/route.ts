@@ -59,7 +59,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await request.json()
+  let body: any = {}
+  try {
+    body = await request.json()
+  } catch (e) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
+
   const role = body?.role === "recruiter" ? "recruiter" : "student"
   const fullName = typeof body?.fullName === "string" ? body.fullName.trim() : null
 
