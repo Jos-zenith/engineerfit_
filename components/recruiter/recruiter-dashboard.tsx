@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState, type FormEvent } from "react"
 import { fetchWithAuth } from "@/lib/auth-fetch"
 import { type Candidate } from "@/lib/mock-data"
@@ -151,7 +152,7 @@ function CandidateDetailPanel({
   className?: string
 }) {
   return (
-    <Card className={`glass ${
+    <Card className={`glass h-full ${
       selectedCandidate.overallFit >= 85 ? "border-gold/30 glow-gold" : "border-cyan/20 glow-cyan"
     } ${className ?? ""}`}>
       <CardHeader className="pb-1">
@@ -282,7 +283,10 @@ export function RecruiterDashboard() {
         const payload = await response.json()
 
         if (!response.ok) {
-          throw new Error(payload?.error || "Unable to load recruiter dashboard")
+          const message = payload?.error || "Unable to load recruiter dashboard"
+          throw new Error(response.status === 401 || response.status === 403
+            ? "Recruiter access requires a recruiter account. Please sign in as a recruiter on /auth."
+            : message)
         }
 
         if (active) {
@@ -384,6 +388,27 @@ export function RecruiterDashboard() {
   }
 
   if (!job) {
+    if (errorMessage) {
+      return (
+        <div className="min-h-screen bg-obsidian relative flex items-center justify-center">
+          <div className="absolute inset-0 bg-grid" />
+          <div className="relative mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-12">
+            <Card className="glass border-destructive/30">
+              <CardHeader>
+                <CardTitle className="font-mono tracking-[0.12em] text-sm uppercase">Recruiter Access Required</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm font-mono text-foreground mb-4">{errorMessage}</p>
+                <div className="flex flex-col gap-3">
+                  <Link href="/auth" className="text-xs font-mono uppercase text-cyan hover:text-cyan-foreground">Go to Auth page to sign in as a recruiter</Link>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen bg-obsidian relative">
         <div className="absolute inset-0 bg-grid" />
@@ -443,6 +468,48 @@ export function RecruiterDashboard() {
     .filter((c) => c.overallFit >= minFit[0])
     .sort((a, b) => b.overallFit - a.overallFit)
 
+  async function handleExport() {
+    const rows = [
+      [
+        "Candidate ID",
+        "Name",
+        "College",
+        "Branch",
+        "Overall Fit",
+        "Cognitive Fit",
+        "Behavioral Fit",
+        "Domain Fit",
+        "Career Hygiene",
+        "Retention Prediction",
+      ].join(","),
+    ]
+
+    filtered.forEach((candidate) => {
+      const row = [
+        candidate.id,
+        candidate.name,
+        candidate.college,
+        candidate.branch,
+        candidate.overallFit.toFixed(1),
+        candidate.cognitiveFit.toFixed(1),
+        candidate.behavioralFit.toFixed(1),
+        candidate.domainFit.toFixed(1),
+        candidate.careerHygieneScore.toFixed(1),
+        candidate.retentionPrediction.toFixed(1),
+      ]
+      rows.push(row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+    })
+
+    const csv = rows.join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `recruiter-candidates-${Date.now()}.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleCandidateSelect = (candidate: RecruiterCandidate) => {
     setSelectedCandidate(candidate)
     if (isMobile) {
@@ -470,7 +537,13 @@ export function RecruiterDashboard() {
                 Deterministic candidate ranking by cosine similarity
               </p>
             </div>
-            <Button variant="outline" size="sm" className="gap-2 self-start border-white/10 text-muted-foreground hover:text-foreground hover:border-cyan/30 font-mono tracking-[0.1em] text-xs">
+            <Button
+              type="button"
+              onClick={handleExport}
+              variant="outline"
+              size="sm"
+              className="gap-2 self-start border-white/10 text-muted-foreground hover:text-foreground hover:border-cyan/30 font-mono tracking-[0.1em] text-xs"
+            >
               <Download className="h-3.5 w-3.5" />
               Export
             </Button>
@@ -549,9 +622,9 @@ export function RecruiterDashboard() {
         </div>
 
         {/* Candidate List + Detail */}
-        <div className="grid gap-4 lg:grid-cols-5">
+        <div className="grid gap-4 lg:grid-cols-5 items-start">
           {/* List */}
-          <div className="lg:col-span-3 flex flex-col gap-3">
+          <div className="lg:col-span-3 flex flex-col gap-3 min-h-full">
             <span className="text-[9px] font-mono text-muted-foreground tracking-[0.15em] uppercase">
               {filtered.length} candidates // ranked by cos(theta)
             </span>
@@ -583,11 +656,11 @@ export function RecruiterDashboard() {
           </div>
 
           {/* Detail Panel */}
-          <div className="hidden lg:block lg:col-span-2">
+          <div className="hidden lg:block lg:col-span-2 min-h-full">
             <AnimatePresence mode="wait">
               {selectedCandidate ? (
                 <motion.div key={selectedCandidate.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
-                  <CandidateDetailPanel selectedCandidate={selectedCandidate} job={job} className="sticky top-20" />
+                  <CandidateDetailPanel selectedCandidate={selectedCandidate} job={job} className="sticky top-20 h-full" />
                 </motion.div>
               ) : (
                 <Card className="glass">

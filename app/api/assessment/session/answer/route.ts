@@ -14,7 +14,8 @@ import { finalizeSessionAndPersistAttempt } from "@/lib/assessment-session"
 import { z } from "zod"
 
 const answerPayloadSchema = z.object({
-  sessionId: z.string().uuid(),
+  // `sessionId` is a Prisma `cuid()` string in this project — accept any non-empty string.
+  sessionId: z.string().min(1),
   questionId: z.number().int().positive(),
   selectedIndex: z.number().int().min(0).max(3),
   confidence: z.enum(["low", "medium", "high"]),
@@ -42,8 +43,15 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null)
+  if (!body) {
+    console.debug("[answer] empty or invalid JSON body", { raw: await request.text().catch(() => "<unreadable>") })
+    return NextResponse.json({ error: "Invalid answer payload", code: "VALIDATION_FAILED", details: "empty body" }, { status: 400 })
+  }
+
+  console.debug("[answer] incoming body", { keys: Object.keys(body), body })
   const parsed = answerPayloadSchema.safeParse(body)
   if (!parsed.success) {
+    console.debug("[answer] zod validation failed", parsed.error.format())
     return NextResponse.json({
       error: "Invalid answer payload",
       code: "VALIDATION_FAILED",
@@ -63,11 +71,13 @@ export async function POST(request: NextRequest) {
   })
 
   if (!session || session.userId !== auth.user.id) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 })
+    console.debug("[answer] session not found or user mismatch", { sessionId, userId: auth.user.id, sessionUserId: session?.userId })
+    return NextResponse.json({ error: "Session not found", code: "SESSION_NOT_FOUND" }, { status: 404 })
   }
 
   if (session.status !== "active") {
-    return NextResponse.json({ error: "Session is already completed" }, { status: 400 })
+    console.debug("[answer] inactive session", { sessionId, status: session.status })
+    return NextResponse.json({ error: "Session is already completed", code: "SESSION_INACTIVE", status: session.status }, { status: 400 })
   }
 
   const askedQuestionIds: number[] = JSON.parse(session.asked_question_ids || "[]")

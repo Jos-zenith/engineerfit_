@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       take: 10,
     })
 
-    let activeSession = existingSessions[0] ?? null
+    let activeSession: (typeof existingSessions)[number] | null = existingSessions.length > 0 ? existingSessions[0] : null
 
     // Backfill safeguard: if duplicate active sessions exist, keep the newest and retire the rest.
     if (existingSessions.length > 1) {

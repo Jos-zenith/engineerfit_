@@ -47,15 +47,15 @@ Both students and recruiters see why a score exists, not just what the score is.
 - Business logic modules in lib for scoring, IRT, matching, and auth-aware fetching.
 
 3. Data + Auth
-- Supabase Postgres for persistence.
-- Supabase Auth for identity.
-- Row-Level Security policies enforce per-user data boundaries.
+- Local Prisma + SQLite for persistence.
+- NextAuth credentials sessions for identity.
+- Process-local caches and mock models keep demo flows usable without external services.
 - Schema includes:
 	- profiles
 	- assessment_sessions
 	- assessment_attempts
 	- assessment_responses
-	- job_postings
+	- recruiter job cache is kept in memory for demo mode.
 
 ## Core Scoring Engine
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
+import { mockStudentProfile } from "@/lib/mock-data"
 import { prisma } from "@/lib/prisma"
 import { getRoleRecommendations } from "@/lib/scoring"
 
@@ -28,7 +29,10 @@ export async function GET(request: NextRequest) {
   })
 
   if (!attempt) {
-    return NextResponse.json({ profile: null })
+    return NextResponse.json({
+      profile: mockStudentProfile,
+      user: { id: auth.user.id, email: auth.user.email },
+    })
   }
 
   const explanation = attempt.explanation ? JSON.parse(attempt.explanation) : {}

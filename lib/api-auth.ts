@@ -15,8 +15,21 @@ export async function requireAuth(request: NextRequest) {
   // Try to read NextAuth session token from cookies (server-side)
   try {
     const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET })
+
     if (!token || !token.sub) {
-      return { error: new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }), user: null }
+      const devDetails = process.env.NODE_ENV !== "production" ? {
+        hasNextAuthSecret: !!process.env.NEXTAUTH_SECRET,
+        tokenPresent: !!token,
+        tokenKeys: token ? Object.keys(token) : [],
+      } : undefined
+
+      // Helpful debug info for local development — avoid leaking token contents.
+      console.debug("[requireAuth] unauthorized access", devDetails)
+
+      return {
+        error: new Response(JSON.stringify({ error: "Unauthorized", details: devDetails }), { status: 401 }),
+        user: null,
+      }
     }
 
     const user = {
@@ -25,8 +38,11 @@ export async function requireAuth(request: NextRequest) {
       user_metadata: token,
     }
 
+    console.debug("[requireAuth] token OK for user", { id: user.id, hasEmail: !!user.email })
+
     return { error: null, user }
   } catch (error) {
+    console.error("[requireAuth] error verifying session", error)
     const message = error instanceof Error ? error.message : "Unable to verify session"
     return { error: new Response(JSON.stringify({ error: message }), { status: 500 }), user: null }
   }
@@ -46,16 +62,18 @@ export async function requireRole(request: NextRequest, role: "student" | "recru
     const roleFromMetadata = getRoleFromMetadata(auth.user)
 
     if (!profile && roleFromMetadata !== role) {
+      console.debug("[requireRole] profile missing and role metadata mismatch", { userId: auth.user.id, expectedRole: role, roleFromMetadata })
       return {
-        error: new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
+        error: new Response(JSON.stringify({ error: `Forbidden: this account is not a ${role}. Please sign in as a ${role} and complete your profile.` }), { status: 403 }),
         user: auth.user,
         profile: null,
       }
     }
 
     if (profile && profile.role !== role && roleFromMetadata !== role) {
+      console.debug("[requireRole] profile role mismatch", { userId: auth.user.id, profileRole: profile.role, expectedRole: role, roleFromMetadata })
       return {
-        error: new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
+        error: new Response(JSON.stringify({ error: `Forbidden: this account has role ${profile.role}. Please sign in with a ${role} account.` }), { status: 403 }),
         user: auth.user,
         profile: null,
       }
@@ -69,6 +87,7 @@ export async function requireRole(request: NextRequest, role: "student" | "recru
 
     return { error: null, user: auth.user, profile: resolvedProfile }
   } catch (error) {
+    console.error("[requireRole] error resolving role/profile", error)
     const message = error instanceof Error ? error.message : "Forbidden"
     return {
       error: new Response(JSON.stringify({ error: message }), { status: 403 }),

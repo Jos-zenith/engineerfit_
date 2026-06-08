@@ -84,7 +84,7 @@ export function LandingNav() {
             { href: "/", key: "nav.home" },
             { href: "/assessment", key: "nav.assessment" },
             { href: "/dashboard", key: "nav.dashboard" },
-            { href: "/recruiter", key: "nav.jobs" },
+            ...(auth.role === "recruiter" ? [{ href: "/recruiter", key: "nav.jobs" }] : []),
           ].map((link) => (
             <Link
               key={link.key}
@@ -152,7 +152,9 @@ export function LandingNav() {
             <Link href="/" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.home")}</Link>
             <Link href="/assessment" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.assessment")}</Link>
             <Link href="/dashboard" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.dashboard")}</Link>
-            <Link href="/recruiter" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.jobs")}</Link>
+            {auth.role === "recruiter" && (
+              <Link href="/recruiter" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.jobs")}</Link>
+            )}
             <Link href="/auth" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>Auth</Link>
             <div className="flex gap-2 pt-2">
               <button

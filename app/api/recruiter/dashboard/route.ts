@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
+import { mockCandidates } from "@/lib/mock-data"
+import { prisma } from "@/lib/prisma"
 import { cosineSimilarityPercent } from "@/lib/matching"
+import { getRecruiterJob, saveRecruiterJob, seedRecruiterJob } from "@/lib/recruiter-cache"
 
 type JobVector = [number, number, number, number, number, number]
 
@@ -71,99 +74,58 @@ function parseJobVector(value: unknown) {
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, "recruiter")
-  if (auth.error || !auth.user || !auth.supabase) {
+  if (auth.error || !auth.user) {
     return auth.error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const minFit = Number(request.nextUrl.searchParams.get("minFit") || 70)
 
-  const { data: jobs, error: jobsError } = await auth.supabase
-    .from("job_postings")
-    .select("id, title, company, location, employment_type, salary_range, requirements, job_vector, min_fit_score, min_career_hygiene_score")
-    .eq("recruiter_id", auth.user.id)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-
-  if (jobsError) {
-    return NextResponse.json({ error: jobsError.message }, { status: 500 })
-  }
-
-  let job = jobs?.[0] ?? null
+  const job = getRecruiterJob(auth.user.id) ?? seedRecruiterJob(auth.user.id)
   let sampleJobCreated = false
 
-  if (!job) {
-    const sampleRequirements = {
-      cognitive: {
-        logicalReasoning: 70,
-        problemSolving: 65,
-        analyticalThinking: 60,
-      },
-      behavioral: {
-        conscientiousness: 65,
-        grit: 70,
-        teamwork: 60,
-      },
-      domain: {
-        dataStructures: 75,
-        webDevelopment: 70,
-        databases: 65,
-      },
-    }
-
-    const { data: createdJob, error: createJobError } = await auth.supabase
-      .from("job_postings")
-      .insert({
-        recruiter_id: auth.user.id,
-        title: "Junior Software Developer",
-        company: "TechCorp Solutions",
-        location: "Chennai, Tamil Nadu",
-        employment_type: "Full-Time, On-site",
-        salary_range: "4.5 - 6.0 LPA",
-        min_fit_score: 70,
-        min_career_hygiene_score: 60,
-        requirements: sampleRequirements,
-        job_vector: [70, 65, 60, 65, 70, 60],
-        is_active: true,
-      })
-      .select("id, title, company, location, employment_type, salary_range, requirements, job_vector, min_fit_score, min_career_hygiene_score")
-      .single()
-
-    if (createJobError) {
-      return NextResponse.json({ error: createJobError.message }, { status: 500 })
-    }
-
-    job = createdJob
+  if (!getRecruiterJob(auth.user.id)) {
     sampleJobCreated = true
   }
 
-  const { data: attempts, error: attemptsError } = await auth.supabase
-    .from("assessment_attempts")
-    .select("user_id, cognitive_score, behavioral_score, domain_score, career_hygiene_score, retention_prediction, role_alignment_score, overall_score")
-    .limit(50)
+  const attempts = await prisma.assessmentAttempt.findMany({
+    select: {
+      userId: true,
+      cognitive_score: true,
+      behavioral_score: true,
+      domain_score: true,
+      career_hygiene_score: true,
+      retention_prediction: true,
+      role_alignment_score: true,
+      overall_score: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  })
 
-  if (attemptsError) {
-    return NextResponse.json({ error: attemptsError.message }, { status: 500 })
-  }
+  const userIds = Array.from(new Set(attempts.map((item) => item.userId)))
 
-  const userIds = Array.from(new Set((attempts ?? []).map((item) => item.user_id)))
+  const profiles = userIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, name: true, email: true },
+      })
+    : []
 
-  const { data: profiles, error: profilesError } = userIds.length
-    ? await auth.supabase.from("profiles").select("id, full_name").in("id", userIds)
-    : { data: [], error: null }
-
-  if (profilesError) {
-    return NextResponse.json({ error: profilesError.message }, { status: 500 })
-  }
-
-  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]))
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]))
   const jobVector = deriveJobVector(job)
 
-  const candidates = (attempts ?? []).map((attempt, idx) => {
-    const profile = profileById.get(attempt.user_id)
-    const studentVector = deriveStudentVector(attempt)
+  const liveCandidates = attempts.map((attempt, idx) => {
+    const profile = profileById.get(attempt.userId)
+    const studentVector = deriveStudentVector({
+      cognitive_score: attempt.cognitive_score ?? 0,
+      behavioral_score: attempt.behavioral_score ?? 0,
+      domain_score: attempt.domain_score ?? 0,
+      career_hygiene_score: attempt.career_hygiene_score ?? 0,
+      retention_prediction: attempt.retention_prediction ?? 0,
+      role_alignment_score: attempt.role_alignment_score ?? 0,
+    })
     const overallFit = cosineSimilarityPercent(studentVector, jobVector)
-    const initials = (profile?.full_name || "ST")
+    const initials = (profile?.name || profile?.email || "ST")
       .split(" ")
       .map((part: string) => part[0])
       .join("")
@@ -172,22 +134,39 @@ export async function GET(request: NextRequest) {
 
     return {
       id: `STU-${String(idx + 1).padStart(3, "0")}`,
-      name: profile?.full_name || "Student",
+      name: profile?.name || profile?.email || "Student",
       college: "Unknown College",
       branch: "Engineering",
       cgpa: 0,
       overallFit,
-      cognitiveFit: attempt.cognitive_score,
-      behavioralFit: attempt.behavioral_score,
-      domainFit: attempt.domain_score,
-      careerHygieneScore: attempt.career_hygiene_score,
-      retentionPrediction: attempt.retention_prediction,
+      cognitiveFit: attempt.cognitive_score ?? 0,
+      behavioralFit: attempt.behavioral_score ?? 0,
+      domainFit: attempt.domain_score ?? 0,
+      careerHygieneScore: attempt.career_hygiene_score ?? 0,
+      retentionPrediction: attempt.retention_prediction ?? 0,
       topStrengths: ["Logical Reasoning", "Technical Skills", "Learning Agility"],
       avatar: initials,
       status: "applied" as const,
       studentVector,
     }
-  }).filter((candidate) => candidate.overallFit >= minFit).sort((a, b) => b.overallFit - a.overallFit)
+  })
+
+  const fallbackCandidates = mockCandidates.map((candidate, idx) => ({
+    ...candidate,
+    id: candidate.id || `STU-${String(idx + 1).padStart(3, "0")}`,
+    studentVector: [
+      candidate.cognitiveFit,
+      candidate.behavioralFit,
+      candidate.domainFit,
+      candidate.careerHygieneScore,
+      candidate.retentionPrediction,
+      Math.round((candidate.cognitiveFit + candidate.behavioralFit + candidate.domainFit) / 3),
+    ],
+  }))
+
+  const candidates = (liveCandidates.length ? liveCandidates : fallbackCandidates)
+    .filter((candidate) => candidate.overallFit >= minFit)
+    .sort((a, b) => b.overallFit - a.overallFit)
 
   return NextResponse.json({
     job: {
@@ -210,7 +189,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, "recruiter")
-  if (auth.error || !auth.user || !auth.supabase) {
+  if (auth.error || !auth.user) {
     return auth.error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -246,27 +225,20 @@ export async function POST(request: NextRequest) {
     },
   }
 
-  const { data, error } = await auth.supabase
-    .from("job_postings")
-    .insert({
-      recruiter_id: auth.user.id,
-      title,
-      company,
-      location,
-      employment_type: employmentType,
-      salary_range: salaryRange,
-      min_fit_score: minFitScore,
-      min_career_hygiene_score: minCareerHygieneScore,
-      requirements,
-      job_vector: jobVector,
-      is_active: true,
-    })
-    .select("id")
-    .single()
+  const savedJob = saveRecruiterJob({
+    id: `job_${auth.user.id}_${Date.now()}`,
+    recruiterId: auth.user.id,
+    title,
+    company,
+    location,
+    employment_type: employmentType,
+    salary_range: salaryRange,
+    requirements,
+    job_vector: jobVector,
+    min_fit_score: minFitScore,
+    min_career_hygiene_score: minCareerHygieneScore,
+    is_active: true,
+  })
 
-  if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Unable to create job posting" }, { status: 500 })
-  }
-
-  return NextResponse.json({ created: true, jobId: data.id })
+  return NextResponse.json({ created: true, jobId: savedJob.id })
 }

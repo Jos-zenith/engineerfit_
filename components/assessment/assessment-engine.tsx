@@ -142,7 +142,7 @@ export function AssessmentEngine() {
         const payload: SessionPayload = await response.json()
 
         if (!response.ok) {
-          throw new Error(payload?.error || "Unable to start adaptive assessment")
+          throw new Error(formatApiError(payload))
         }
 
         if (active) {
@@ -207,6 +207,20 @@ export function AssessmentEngine() {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
   }
 
+  const formatApiError = (payload: any) => {
+    if (!payload) return "Unknown API error"
+    if (typeof payload.error === "string") {
+      let message = payload.error
+      if (payload.code) message += ` (${payload.code})`
+      if (payload.details) {
+        const detailsText = typeof payload.details === "string" ? payload.details : JSON.stringify(payload.details)
+        message += `: ${detailsText}`
+      }
+      return message
+    }
+    return JSON.stringify(payload)
+  }
+
   const handleResumeChoice = useCallback(async (mode: "resume" | "restart") => {
     if (!selectedDiscipline) {
       setErrorMessage("Select your engineering discipline before continuing.")
@@ -227,7 +241,7 @@ export function AssessmentEngine() {
 
       const payload: SessionPayload = await response.json()
       if (!response.ok) {
-        throw new Error(payload?.error || "Unable to load assessment session")
+        throw new Error(formatApiError(payload))
       }
 
       if (payload.completed) {
@@ -331,7 +345,7 @@ export function AssessmentEngine() {
 
         const payload = await response.json()
         if (!response.ok) {
-          throw new Error(payload?.error || "Unable to process adaptive answer")
+          throw new Error(formatApiError(payload))
         }
 
         if (payload.completed) {
