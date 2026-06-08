@@ -38,17 +38,30 @@ export function LandingNav() {
         return
       }
 
-      const response = await fetchWithAuth("/api/auth/profile")
-      const payload = await response.json()
+      try {
+        const response = await fetchWithAuth("/api/auth/profile")
+        
+        if (!response.ok) {
+          console.error("Failed to fetch profile:", response.status, response.statusText)
+          return
+        }
 
-      if (!active) {
-        return
+        const payload = await response.json()
+
+        if (!active) {
+          return
+        }
+
+        setAuth({
+          email: session.user.email,
+          role: payload?.profile?.role ?? null,
+        })
+      } catch (error) {
+        console.error("Error hydrating auth:", error)
+        if (active) {
+          setAuth({ email: null, role: null })
+        }
       }
-
-      setAuth({
-        email: session.user.email,
-        role: payload?.profile?.role ?? null,
-      })
     }
 
     void hydrateAuth()

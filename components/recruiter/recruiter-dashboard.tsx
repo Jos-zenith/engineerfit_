@@ -280,14 +280,21 @@ export function RecruiterDashboard() {
     async function loadDashboard() {
       try {
         const response = await fetchWithAuth(`/api/recruiter/dashboard?minFit=${minFit[0]}`)
-        const payload = await response.json()
 
         if (!response.ok) {
+          let payload: any = {}
+          try {
+            payload = await response.json()
+          } catch (e) {
+            // Response is not JSON, use generic error
+          }
           const message = payload?.error || "Unable to load recruiter dashboard"
           throw new Error(response.status === 401 || response.status === 403
             ? "Recruiter access requires a recruiter account. Please sign in as a recruiter on /auth."
             : message)
         }
+
+        const payload = await response.json()
 
         if (active) {
           setJob(payload.job)
@@ -354,19 +361,32 @@ export function RecruiterDashboard() {
         }),
       })
 
-      const payload = await response.json()
       if (!response.ok) {
+        let payload: any = {}
+        try {
+          payload = await response.json()
+        } catch (e) {
+          // Response is not JSON, use generic error
+        }
         throw new Error(payload?.error || "Unable to create job posting")
       }
+
+      const payload = await response.json()
 
       setCreateMessage("Job posting created. Refreshing dashboard...")
       setOnboardingMessage(null)
       setLoading(true)
       const refresh = await fetchWithAuth(`/api/recruiter/dashboard?minFit=${minFit[0]}`)
-      const refreshed = await refresh.json()
       if (!refresh.ok) {
+        let refreshed: any = {}
+        try {
+          refreshed = await refresh.json()
+        } catch (e) {
+          // Response is not JSON, use generic error
+        }
         throw new Error(refreshed?.error || "Unable to refresh dashboard")
       }
+      const refreshed = await refresh.json()
       setJob(refreshed.job)
       setCandidates(refreshed.candidates ?? [])
       setSelectedCandidate(refreshed.candidates?.[0] ?? null)
