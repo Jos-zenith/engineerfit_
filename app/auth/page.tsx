@@ -50,11 +50,17 @@ function AuthCard() {
       body: JSON.stringify({ role: nextRole, fullName: nextFullName }),
     })
 
-    const payload = await response.json()
     if (!response.ok) {
+      let payload: any = {}
+      try {
+        payload = await response.json()
+      } catch (e) {
+        // Response is not JSON, use generic error
+      }
       throw new Error(payload?.error || "Unable to save profile")
     }
 
+    const payload = await response.json()
     return payload
   }
 
