@@ -110,11 +110,18 @@ export function AssessmentEngine() {
           },
           body: JSON.stringify({ probeOnly: true, discipline: selectedDiscipline }),
         })
-        const probePayload: SessionPayload = await probeResponse.json()
 
         if (!probeResponse.ok) {
+          let probePayload: any = {}
+          try {
+            probePayload = await probeResponse.json()
+          } catch (e) {
+            // Response is not JSON, use generic error
+          }
           throw new Error(probePayload.error || "Unable to check active assessment session")
         }
+
+        const probePayload: SessionPayload = await probeResponse.json()
 
         if (probePayload.resumable && probePayload.answeredCount > 0) {
           if (active) {
@@ -139,11 +146,18 @@ export function AssessmentEngine() {
           },
           body: JSON.stringify({ discipline: selectedDiscipline }),
         })
-        const payload: SessionPayload = await response.json()
 
         if (!response.ok) {
+          let payload: any = {}
+          try {
+            payload = await response.json()
+          } catch (e) {
+            // Response is not JSON, use generic error
+          }
           throw new Error(formatApiError(payload))
         }
+
+        const payload: SessionPayload = await response.json()
 
         if (active) {
           if (payload.completed) {
@@ -239,10 +253,17 @@ export function AssessmentEngine() {
         body: JSON.stringify(mode === "restart" ? { restart: true, discipline: selectedDiscipline } : { discipline: selectedDiscipline }),
       })
 
-      const payload: SessionPayload = await response.json()
       if (!response.ok) {
+        let payload: any = {}
+        try {
+          payload = await response.json()
+        } catch (e) {
+          // Response is not JSON, use generic error
+        }
         throw new Error(formatApiError(payload))
       }
+
+      const payload: SessionPayload = await response.json()
 
       if (payload.completed) {
         setIsCompleted(true)
@@ -285,11 +306,17 @@ export function AssessmentEngine() {
         body: JSON.stringify({ sessionId }),
       })
 
-      const payload = await response.json()
-
       if (!response.ok) {
+        let payload: any = {}
+        try {
+          payload = await response.json()
+        } catch (e) {
+          // Response is not JSON, use generic error
+        }
         throw new Error(payload?.error || "Unable to submit assessment")
       }
+
+      const payload = await response.json()
 
       setIsCompleted(true)
       if (payload?.scores?.irtTheta !== undefined) {
@@ -343,10 +370,17 @@ export function AssessmentEngine() {
           }),
         })
 
-        const payload = await response.json()
         if (!response.ok) {
+          let payload: any = {}
+          try {
+            payload = await response.json()
+          } catch (e) {
+            // Response is not JSON, use generic error
+          }
           throw new Error(formatApiError(payload))
         }
+
+        const payload = await response.json()
 
         if (payload.completed) {
           if (payload?.scores?.irtTheta !== undefined) {

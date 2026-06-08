@@ -65,11 +65,18 @@ export function CareerFitSnapshot() {
     async function loadProfile() {
       try {
         const response = await fetchWithAuth("/api/student/profile")
-        const payload = await response.json()
 
         if (!response.ok) {
+          let payload: any = {}
+          try {
+            payload = await response.json()
+          } catch (e) {
+            // Response is not JSON, use generic error
+          }
           throw new Error(payload?.error || "Unable to load profile")
         }
+
+        const payload = await response.json()
 
         if (active) {
           setProfile(payload.profile)
