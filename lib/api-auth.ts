@@ -11,36 +11,83 @@ function getRoleFromMetadata(user: { user_metadata?: Record<string, unknown> }) 
   return null
 }
 
+function getHeaderRole(request: NextRequest) {
+  const role = request.headers.get("x-user-role")
+  return role === "student" || role === "recruiter" ? role : null
+}
+
+async function ensureGuestUser(role: "student" | "recruiter") {
+  const userId = `guest-${role}`
+  const existingUser = await prisma.user.findUnique({ where: { id: userId } })
+
+  if (existingUser) {
+    return existingUser
+  }
+
+  return prisma.user.create({
+    data: {
+      id: userId,
+      email: `${userId}@guest.local`,
+      name: role === "recruiter" ? "Recruiter Guest" : "Student Guest",
+    },
+  })
+}
+
+async function ensureGuestProfile(userId: string, role: "student" | "recruiter") {
+  const existingProfile = await prisma.assessmentProfile.findFirst({ where: { userId } })
+
+  if (existingProfile) {
+    return existingProfile
+  }
+
+  return prisma.assessmentProfile.create({
+    data: {
+      userId,
+      displayName: role === "recruiter" ? "Recruiter Guest" : "Student Guest",
+      role,
+    },
+  })
+}
+
 export async function requireAuth(request: NextRequest) {
-  // Try to read NextAuth session token from cookies (server-side)
   try {
     const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET })
 
-    if (!token || !token.sub) {
-      const devDetails = process.env.NODE_ENV !== "production" ? {
-        hasNextAuthSecret: !!process.env.NEXTAUTH_SECRET,
-        tokenPresent: !!token,
-        tokenKeys: token ? Object.keys(token) : [],
-      } : undefined
+    if (token?.sub) {
+      const user = {
+        id: token.sub,
+        email: typeof token.email === "string" ? token.email : null,
+        user_metadata: token,
+      }
 
-      // Helpful debug info for local development — avoid leaking token contents.
-      console.debug("[requireAuth] unauthorized access", devDetails)
+      return { error: null, user }
+    }
+
+    const headerRole = getHeaderRole(request)
+    if (headerRole) {
+      const guestUser = await ensureGuestUser(headerRole)
+      await ensureGuestProfile(guestUser.id, headerRole)
 
       return {
-        error: new Response(JSON.stringify({ error: "Unauthorized", details: devDetails }), { status: 401 }),
-        user: null,
+        error: null,
+        user: {
+          id: guestUser.id,
+          email: guestUser.email,
+          user_metadata: { role: headerRole, full_name: guestUser.name },
+        },
       }
     }
 
-    const user = {
-      id: token.sub,
-      email: typeof token.email === "string" ? token.email : null,
-      user_metadata: token,
+    const devDetails = process.env.NODE_ENV !== "production" ? {
+      hasNextAuthSecret: !!process.env.NEXTAUTH_SECRET,
+      tokenPresent: !!token,
+      tokenKeys: token ? Object.keys(token) : [],
+    } : undefined
+
+    return {
+      error: new Response(JSON.stringify({ error: "Unauthorized", details: devDetails }), { status: 401 }),
+      user: null,
     }
-
-    console.debug("[requireAuth] token OK for user", { id: user.id, hasEmail: !!user.email })
-
-    return { error: null, user }
   } catch (error) {
     console.error("[requireAuth] error verifying session", error)
     const message = error instanceof Error ? error.message : "Unable to verify session"
@@ -60,20 +107,20 @@ export async function requireRole(request: NextRequest, role: "student" | "recru
     })
 
     const roleFromMetadata = getRoleFromMetadata(auth.user)
+    const headerRole = getHeaderRole(request)
+    const resolvedRole = headerRole ?? roleFromMetadata ?? role
 
-    if (!profile && roleFromMetadata !== role) {
-      console.debug("[requireRole] profile missing and role metadata mismatch", { userId: auth.user.id, expectedRole: role, roleFromMetadata })
+    if (!profile && resolvedRole !== role) {
       return {
-        error: new Response(JSON.stringify({ error: `Forbidden: this account is not a ${role}. Please sign in as a ${role} and complete your profile.` }), { status: 403 }),
+        error: new Response(JSON.stringify({ error: `Forbidden: this account is not a ${role}. Please choose the ${role} experience.` }), { status: 403 }),
         user: auth.user,
         profile: null,
       }
     }
 
-    if (profile && profile.role !== role && roleFromMetadata !== role) {
-      console.debug("[requireRole] profile role mismatch", { userId: auth.user.id, profileRole: profile.role, expectedRole: role, roleFromMetadata })
+    if (profile && profile.role !== role && resolvedRole !== role) {
       return {
-        error: new Response(JSON.stringify({ error: `Forbidden: this account has role ${profile.role}. Please sign in with a ${role} account.` }), { status: 403 }),
+        error: new Response(JSON.stringify({ error: `Forbidden: this account has role ${profile.role}. Please choose the ${role} experience.` }), { status: 403 }),
         user: auth.user,
         profile: null,
       }

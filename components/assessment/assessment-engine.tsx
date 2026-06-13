@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 import { useI18n } from "@/lib/i18n"
 import { type Confidence, type EngineeringDiscipline, type PublicAssessmentQuestion, type QuestionCategory } from "@/lib/assessment-bank"
 import { fetchWithAuth } from "@/lib/auth-fetch"
@@ -62,7 +61,6 @@ const categoryConfig: Record<QuestionCategory, { icon: typeof Brain; label: stri
 export function AssessmentEngine() {
   const { language, setLanguage, t } = useI18n()
   const router = useRouter()
-  const { data: session, status } = useSession()
   const [selectedDiscipline, setSelectedDiscipline] = useState<EngineeringDiscipline | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState<PublicAssessmentQuestion | null>(null)
@@ -84,17 +82,6 @@ export function AssessmentEngine() {
 
   useEffect(() => {
     if (!selectedDiscipline) {
-      return
-    }
-
-    if (status === "loading") {
-      return
-    }
-
-    // Redirect to auth if not authenticated
-    if (status === "unauthenticated") {
-      setErrorMessage("Please login to start your assessment.")
-      router.push("/auth")
       return
     }
 
@@ -193,7 +180,7 @@ export function AssessmentEngine() {
     return () => {
       active = false
     }
-  }, [router, selectedDiscipline, status])
+  }, [selectedDiscipline])
 
   const progress = totalQuestions ? (answeredCount / totalQuestions) * 100 : 0
   const catConfig = categoryConfig[currentQuestion?.category ?? "cognitive"]
@@ -488,7 +475,7 @@ export function AssessmentEngine() {
         <div className="absolute inset-0 bg-grid" />
         <div className="text-center px-4">
           <p className="text-sm font-mono text-destructive tracking-[0.08em]">{errorMessage || "No questions available."}</p>
-          <Button className="mt-4" onClick={() => router.push("/auth")}>Go To Login</Button>
+          <Button className="mt-4" onClick={() => router.push("/auth")}>Choose your role</Button>
         </div>
       </div>
     )

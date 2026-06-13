@@ -290,7 +290,7 @@ export function RecruiterDashboard() {
           }
           const message = payload?.error || "Unable to load recruiter dashboard"
           throw new Error(response.status === 401 || response.status === 403
-            ? "Recruiter access requires a recruiter account. Please sign in as a recruiter on /auth."
+            ? "Recruiter access is available without a login. Choose the recruiter role to continue."
             : message)
         }
 
@@ -420,7 +420,7 @@ export function RecruiterDashboard() {
               <CardContent>
                 <p className="text-sm font-mono text-foreground mb-4">{errorMessage}</p>
                 <div className="flex flex-col gap-3">
-                  <Link href="/auth" className="text-xs font-mono uppercase text-cyan hover:text-cyan-foreground">Go to Auth page to sign in as a recruiter</Link>
+                  <Link href="/auth" className="text-xs font-mono uppercase text-cyan hover:text-cyan-foreground">Choose the recruiter role</Link>
                 </div>
               </CardContent>
             </Card>

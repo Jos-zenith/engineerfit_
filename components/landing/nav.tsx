@@ -2,79 +2,15 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useSession, signOut } from "next-auth/react"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { motion } from "framer-motion"
-import { fetchWithAuth } from "@/lib/auth-fetch"
-
-interface AuthState {
-  email: string | null
-  role: "student" | "recruiter" | null
-}
 
 export function LandingNav() {
   const { language, setLanguage, t } = useI18n()
-    const { data: session, status } = useSession()
   const [open, setOpen] = useState(false)
-  const [auth, setAuth] = useState<AuthState>({ email: null, role: null })
-
-  useEffect(() => {
-    if (status === "loading") {
-      return
-    }
-
-    if (status === "unauthenticated") {
-      setAuth({ email: null, role: null })
-      return
-    }
-
-    let active = true
-
-    async function hydrateAuth() {
-      if (!session?.user?.email) {
-        return
-      }
-
-      try {
-        const response = await fetchWithAuth("/api/auth/profile")
-        
-        if (!response.ok) {
-          console.error("Failed to fetch profile:", response.status, response.statusText)
-          return
-        }
-
-        const payload = await response.json()
-
-        if (!active) {
-          return
-        }
-
-        setAuth({
-          email: session.user.email,
-          role: payload?.profile?.role ?? null,
-        })
-      } catch (error) {
-        console.error("Error hydrating auth:", error)
-        if (active) {
-          setAuth({ email: null, role: null })
-        }
-      }
-    }
-
-    void hydrateAuth()
-
-    return () => {
-      active = false
-    }
-  }, [session, status])
-
-  async function handleSignOut() {
-    await signOut({ redirect: false })
-    setAuth({ email: null, role: null })
-  }
 
   return (
     <header className="sticky top-0 z-50 glass-strong">
@@ -97,7 +33,7 @@ export function LandingNav() {
             { href: "/", key: "nav.home" },
             { href: "/assessment", key: "nav.assessment" },
             { href: "/dashboard", key: "nav.dashboard" },
-            ...(auth.role === "recruiter" ? [{ href: "/recruiter", key: "nav.jobs" }] : []),
+            { href: "/recruiter", key: "nav.jobs" },
           ].map((link) => (
             <Link
               key={link.key}
@@ -110,7 +46,6 @@ export function LandingNav() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          {/* System Mode Language Switch */}
           <button
             onClick={() => setLanguage(language === "en" ? "ta" : "en")}
             className="flex items-center gap-2 rounded-md border border-white/10 px-3 py-1.5 hover:border-cyan/30 transition-colors"
@@ -122,27 +57,11 @@ export function LandingNav() {
               <span className={`text-[10px] font-mono font-bold tracking-wider ${language === "ta" ? "text-cyan" : "text-muted-foreground"}`}>TA</span>
             </div>
           </button>
-          {auth.email ? (
-            <>
-              <span className="text-[10px] font-mono text-muted-foreground tracking-[0.1em] uppercase">
-                {auth.role ?? "user"}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleSignOut}
-                className="border-white/10 text-muted-foreground hover:text-foreground hover:border-cyan/30 font-mono tracking-[0.1em] text-xs"
-              >
-                Logout
-              </Button>
-            </>
-          ) : (
-            <Link href="/auth">
-              <Button size="sm" className="bg-cyan text-cyan-foreground hover:bg-cyan/90 glow-cyan font-mono tracking-[0.1em] text-xs">
-                Login
-              </Button>
-            </Link>
-          )}
+          <Link href="/auth">
+            <Button size="sm" className="bg-cyan text-cyan-foreground hover:bg-cyan/90 glow-cyan font-mono tracking-[0.1em] text-xs">
+              Choose role
+            </Button>
+          </Link>
         </div>
 
         <button
@@ -165,10 +84,8 @@ export function LandingNav() {
             <Link href="/" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.home")}</Link>
             <Link href="/assessment" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.assessment")}</Link>
             <Link href="/dashboard" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.dashboard")}</Link>
-            {auth.role === "recruiter" && (
-              <Link href="/recruiter" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.jobs")}</Link>
-            )}
-            <Link href="/auth" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>Auth</Link>
+            <Link href="/recruiter" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>{t("nav.jobs")}</Link>
+            <Link href="/auth" className="text-xs font-mono font-medium text-foreground py-2 tracking-[0.12em] uppercase" onClick={() => setOpen(false)}>Choose role</Link>
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setLanguage(language === "en" ? "ta" : "en")}

@@ -1,17 +1,20 @@
 "use client"
 
-import { FormEvent, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { signIn } from "next-auth/react"
 import { I18nProvider } from "@/lib/i18n"
 import { LandingNav } from "@/components/landing/nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { fetchWithAuth } from "@/lib/auth-fetch"
+import { GraduationCap, Briefcase } from "lucide-react"
 
 type Role = "student" | "recruiter"
+
+function setStoredRole(role: Role) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem("engineerfit-role", role)
+  }
+}
 
 export default function AuthPage() {
   return (
@@ -31,139 +34,69 @@ export default function AuthPage() {
 
 function AuthCard() {
   const router = useRouter()
-  const [mode, setMode] = useState<"login" | "signup">("login")
-  const [fullName, setFullName] = useState("")
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [role, setRole] = useState<Role>("student")
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null)
 
-  async function saveProfile(nextRole: Role, nextFullName: string, accessToken?: string | null) {
-    const response = await fetchWithAuth("/api/auth/profile", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      accessToken,
-      body: JSON.stringify({ role: nextRole, fullName: nextFullName }),
-    })
-
-    if (!response.ok) {
-      let payload: any = {}
-      try {
-        payload = await response.json()
-      } catch (e) {
-        // Response is not JSON, use generic error
-      }
-      throw new Error(payload?.error || "Unable to save profile")
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
     }
 
-    const payload = await response.json()
-    return payload
-  }
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setBusy(true)
-    setErrorMessage(null)
-    setMessage(null)
-
-    try {
-
-
-      if (mode === "login") {
-        const result = await signIn("credentials", {
-          email,
-          password,
-          redirect: false,
-        })
-
-        if (result?.error) {
-          throw new Error(result.error)
-        }
-
-        await saveProfile(role, fullName)
-        setMessage("Signed in successfully.")
-      } else {
-        // Sign up is handled by credentials provider - it creates user if doesn't exist
-        const result = await signIn("credentials", {
-          email,
-          password,
-          isSignUp: true,
-          redirect: false,
-        })
-
-        if (result?.error) {
-          throw new Error(result.error)
-        }
-
-        await saveProfile(role, fullName)
-        setMessage("Account created successfully.")
-      }
-
-      router.push(role === "recruiter" ? "/recruiter" : "/assessment")
-      router.refresh()
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Authentication failed")
-    } finally {
-      setBusy(false)
+    const storedRole = window.localStorage.getItem("engineerfit-role")
+    if (storedRole === "student" || storedRole === "recruiter") {
+      setSelectedRole(storedRole)
     }
+  }, [])
+
+  function continueAs(role: Role) {
+    setStoredRole(role)
+    setSelectedRole(role)
+    router.push(role === "recruiter" ? "/recruiter" : "/assessment")
   }
 
   return (
     <Card className="glass border-white/10">
       <CardHeader>
         <CardTitle className="font-mono tracking-[0.12em] text-base uppercase">
-          {mode === "login" ? "Secure Login" : "Create Account"}
+          Choose your experience
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <div className="space-y-2">
-            <Label htmlFor="fullName" className="text-xs font-mono tracking-[0.1em] uppercase">Full Name</Label>
-            <Input id="fullName" value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your full name" required={mode === "signup"} />
-          </div>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          No login is required right now. Pick the experience you want to open.
+        </p>
 
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs font-mono tracking-[0.1em] uppercase">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-xs font-mono tracking-[0.1em] uppercase">Password</Label>
-            <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required minLength={6} />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-xs font-mono tracking-[0.1em] uppercase">Role</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant={role === "student" ? "default" : "outline"} onClick={() => setRole("student")} className="text-xs font-mono tracking-[0.08em] uppercase">
-                Student
-              </Button>
-              <Button type="button" variant={role === "recruiter" ? "default" : "outline"} onClick={() => setRole("recruiter")} className="text-xs font-mono tracking-[0.08em] uppercase">
-                Recruiter
-              </Button>
-            </div>
-          </div>
-
-          <Button type="submit" className="w-full bg-cyan text-cyan-foreground hover:bg-cyan/90 font-mono tracking-[0.1em] uppercase" disabled={busy}>
-            {busy ? "Please wait..." : mode === "login" ? "Login" : "Create account"}
+        <div className="grid gap-3">
+          <Button
+            type="button"
+            onClick={() => continueAs("student")}
+            className="h-12 justify-between bg-cyan text-cyan-foreground hover:bg-cyan/90 font-mono tracking-[0.1em] uppercase"
+          >
+            <span className="flex items-center gap-2">
+              <GraduationCap className="h-4 w-4" />
+              Student
+            </span>
+            <span className="text-xs opacity-80">Assessment</span>
           </Button>
 
-          {errorMessage && <p className="text-xs text-destructive font-mono">{errorMessage}</p>}
-          {message && <p className="text-xs text-emerald font-mono">{message}</p>}
-        </form>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => continueAs("recruiter")}
+            className="h-12 justify-between border-white/10 font-mono tracking-[0.1em] uppercase"
+          >
+            <span className="flex items-center gap-2">
+              <Briefcase className="h-4 w-4" />
+              Recruiter
+            </span>
+            <span className="text-xs opacity-80">Dashboard</span>
+          </Button>
+        </div>
 
-        <Button
-          type="button"
-          variant="ghost"
-          className="mt-3 w-full text-xs font-mono tracking-[0.1em]"
-          onClick={() => setMode(mode === "login" ? "signup" : "login")}
-        >
-          {mode === "login" ? "Need an account? Sign up" : "Already have an account? Login"}
-        </Button>
+        {selectedRole && (
+          <p className="text-xs font-mono text-emerald">
+            Current selection: {selectedRole}
+          </p>
+        )}
       </CardContent>
     </Card>
   )
