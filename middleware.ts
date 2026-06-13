@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 
 /**
  * Middleware for authentication and request processing.
@@ -11,17 +10,6 @@ export async function middleware(request: NextRequest) {
       headers: request.headers,
     },
   });
-
-  // Use NextAuth JWT in middleware to check session presence.
-  try {
-    const token = await getToken({ 
-      req: request as any, 
-      secret: process.env.NEXTAUTH_SECRET 
-    });
-    // You can inspect `token` and conditionally redirect/protect routes here.
-  } catch (error) {
-    console.error('Token validation error:', error);
-  }
 
   return response;
 }

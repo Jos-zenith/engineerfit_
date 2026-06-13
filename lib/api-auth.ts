@@ -2,6 +2,18 @@ import { NextRequest } from "next/server"
 import { getToken } from "next-auth/jwt"
 import { prisma } from "@/lib/prisma"
 
+function getDevAuthContext(token: any) {
+  if (process.env.NODE_ENV === "production") {
+    return undefined
+  }
+
+  return {
+    hasNextAuthSecret: !!process.env.NEXTAUTH_SECRET,
+    tokenPresent: !!token,
+    tokenKeys: token ? Object.keys(token) : [],
+  }
+}
+
 function getRoleFromMetadata(user: { user_metadata?: Record<string, unknown> }) {
   const metadataRole = user.user_metadata?.role
   if (metadataRole === "student" || metadataRole === "recruiter") {
@@ -51,7 +63,9 @@ async function ensureGuestProfile(userId: string, role: "student" | "recruiter")
 
 export async function requireAuth(request: NextRequest) {
   try {
-    const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET })
+    const token = process.env.NEXTAUTH_SECRET
+      ? await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET })
+      : null
 
     if (token?.sub) {
       const user = {
@@ -78,11 +92,7 @@ export async function requireAuth(request: NextRequest) {
       }
     }
 
-    const devDetails = process.env.NODE_ENV !== "production" ? {
-      hasNextAuthSecret: !!process.env.NEXTAUTH_SECRET,
-      tokenPresent: !!token,
-      tokenKeys: token ? Object.keys(token) : [],
-    } : undefined
+    const devDetails = getDevAuthContext(token)
 
     return {
       error: new Response(JSON.stringify({ error: "Unauthorized", details: devDetails }), { status: 401 }),
